@@ -20,7 +20,7 @@ permissions:
 
 env:
   R2_BUCKET_NAME: codex-app-mirror
-  R2_PUBLIC_BASE_URL: https://pub-e0f3eb64cbbf47a094860887f49a4431.r2.dev
+  R2_PUBLIC_BASE_URL: https://codexapp.agentsmirror.com
 
 concurrency:
   group: codex-app-mirror
