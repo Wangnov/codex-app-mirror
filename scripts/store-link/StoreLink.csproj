@@ -4,10 +4,5 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <NoWarn>NU1903</NoWarn>
   </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include="StoreLib" Version="1.2.1" />
-  </ItemGroup>
 </Project>

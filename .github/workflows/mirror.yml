@@ -79,7 +79,7 @@ jobs:
             echo "Official Codex desktop app installer mirror."
             echo
             echo "Sources:"
-            echo "- Windows: Microsoft Store ProductId 9PLM9XGG6VKS via winget download"
+            echo "- Windows: Microsoft Store ProductId 9PLM9XGG6VKS via DisplayCatalog/FE3 metadata"
             echo "- macOS arm64: https://persistent.oaistatic.com/codex-app-prod/Codex.dmg"
             echo "- macOS x64: https://persistent.oaistatic.com/codex-app-prod/Codex-latest-x64.dmg"
             echo

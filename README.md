@@ -41,4 +41,5 @@ MSIX as a release asset instead of trying to preserve the original CDN URL.
 Microsoft documents that `winget download` for Store packaged apps requires
 Entra ID authentication, which is not suitable for unattended GitHub-hosted
 runners. This repository therefore uses the same Microsoft Store metadata path
-that the Store client ultimately relies on for package CDN URLs.
+that the Store client ultimately relies on for package CDN URLs, implemented
+directly with .NET and without third-party Store helper packages.
