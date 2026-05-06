@@ -29,13 +29,16 @@ The macOS URLs are the same URLs used by the official `openai/codex` CLI
 - `https://persistent.oaistatic.com/codex-app-prod/Codex.dmg`
 - `https://persistent.oaistatic.com/codex-app-prod/Codex-latest-x64.dmg`
 
-The Windows package is downloaded via `winget download` from the Microsoft Store
-source using ProductId `9PLM9XGG6VKS`.
+The Windows package URL is resolved from Microsoft Store DisplayCatalog/FE3
+metadata using ProductId `9PLM9XGG6VKS`, then downloaded from the returned
+Microsoft CDN URL.
 
 ## Notes
 
 Microsoft Store CDN URLs are temporary, so the workflow stores the downloaded
 MSIX as a release asset instead of trying to preserve the original CDN URL.
 
-`winget download --skip-license` skips only the Store offline license file. It
-does not modify the MSIX package.
+Microsoft documents that `winget download` for Store packaged apps requires
+Entra ID authentication, which is not suitable for unattended GitHub-hosted
+runners. This repository therefore uses the same Microsoft Store metadata path
+that the Store client ultimately relies on for package CDN URLs.

@@ -6,30 +6,28 @@ $ErrorActionPreference = "Stop"
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
-winget --version
-winget source update
+dotnet --info
 
-winget download `
-  --id 9PLM9XGG6VKS `
-  --source msstore `
-  --architecture x64 `
-  --platform Windows.Desktop `
-  --download-directory $OutDir `
-  --accept-source-agreements `
-  --accept-package-agreements `
-  --skip-license `
-  --disable-interactivity
-
-$package = Get-ChildItem -Path $OutDir -Recurse -Include *.msix,*.msixbundle |
-  Sort-Object Length -Descending |
+$linkLine = dotnet run --project scripts/store-link -- 9PLM9XGG6VKS x64 |
+  Where-Object { $_ -match "^OpenAI\.Codex_" } |
   Select-Object -First 1
 
-if (-not $package) {
-  throw "No MSIX/MSIXBundle was downloaded."
+if (-not $linkLine) {
+  throw "No Microsoft Store package link was resolved."
 }
 
-$target = Join-Path $OutDir "Codex-windows-x64$($package.Extension)"
-Move-Item -Force -Path $package.FullName -Destination $target
+$parts = $linkLine -split "`t", 2
+$packageMoniker = $parts[0]
+$downloadUrl = $parts[1]
+$target = Join-Path $OutDir "$packageMoniker.Msix"
+
+Write-Host "Downloading $packageMoniker"
+Write-Host "Resolved Microsoft CDN URL: $downloadUrl"
+
+Invoke-WebRequest `
+  -Uri $downloadUrl `
+  -OutFile $target `
+  -MaximumRedirection 5
 
 Get-FileHash -Algorithm SHA256 -Path $target |
   ForEach-Object { "$($_.Hash.ToLowerInvariant())  $(Split-Path -Leaf $_.Path)" } |
