@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install actionlint
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          sudo install -m 0755 actionlint /usr/local/bin/actionlint
+
+      - name: Validate shell scripts
+        shell: bash
+        run: bash -n scripts/*.sh
+
+      - name: Validate GitHub Actions
+        shell: bash
+        run: actionlint
+
+      - name: Build Microsoft Store resolver
+        run: dotnet build scripts/store-link/StoreLink.csproj --configuration Release

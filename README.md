@@ -49,6 +49,16 @@
 OpenAI.Codex_<version>_x64__2p2nqsd0c76g0.Msix
 ```
 
+## 版本号说明
+
+Windows 和 macOS 的版本号来自不同上游包，不保证完全一致。Windows MSIX 使用 Microsoft Store 包名里的四段版本，例如 `26.513.3673.0`；macOS 使用 DMG 内 `Codex.app/Contents/Info.plist` 的 `CFBundleShortVersionString` 和 `CFBundleVersion`，例如 `26.513.31313` build `2867`。
+
+Release tag 会同时写明两边版本，形如：
+
+```text
+codex-app-win-26.513.3673.0-mac-26.513.31313-b2867
+```
+
 ## 怎么用
 
 打开 [最新 GitHub Release](https://github.com/Wangnov/codex-app-mirror/releases/latest)，下载你的平台对应文件：
@@ -63,6 +73,8 @@ OpenAI.Codex_<version>_x64__2p2nqsd0c76g0.Msix
 - Apple Silicon Mac：[https://codexapp.agentsmirror.com/latest/mac-arm64](https://codexapp.agentsmirror.com/latest/mac-arm64)
 - Intel Mac：[https://codexapp.agentsmirror.com/latest/mac-intel](https://codexapp.agentsmirror.com/latest/mac-intel)
 - 校验和：[https://codexapp.agentsmirror.com/latest/checksums](https://codexapp.agentsmirror.com/latest/checksums)
+
+R2 短链接是面向国内网络环境准备的下载镜像，只保留当前最新版。需要旧版本时，请到 [GitHub Releases](https://github.com/Wangnov/codex-app-mirror/releases) 按 release/tag 查找历史资产。
 
 建议同时下载 `SHA256SUMS.txt`，核对文件没有在下载过程中损坏。
 
@@ -131,6 +143,16 @@ The Windows asset is named like this:
 OpenAI.Codex_<version>_x64__2p2nqsd0c76g0.Msix
 ```
 
+## Version Numbers
+
+Windows and macOS versions come from different upstream packages and are not guaranteed to match exactly. The Windows MSIX version comes from the Microsoft Store package moniker, for example `26.513.3673.0`. The macOS version comes from `Codex.app/Contents/Info.plist` inside the DMG, using `CFBundleShortVersionString` and `CFBundleVersion`, for example `26.513.31313` build `2867`.
+
+Release tags include both sides:
+
+```text
+codex-app-win-26.513.3673.0-mac-26.513.31313-b2867
+```
+
 ## Usage
 
 Open the [latest GitHub Release](https://github.com/Wangnov/codex-app-mirror/releases/latest) and download the asset for your platform:
@@ -145,6 +167,8 @@ You can also use the R2 short links directly:
 - Apple Silicon Mac: [https://codexapp.agentsmirror.com/latest/mac-arm64](https://codexapp.agentsmirror.com/latest/mac-arm64)
 - Intel Mac: [https://codexapp.agentsmirror.com/latest/mac-intel](https://codexapp.agentsmirror.com/latest/mac-intel)
 - Checksums: [https://codexapp.agentsmirror.com/latest/checksums](https://codexapp.agentsmirror.com/latest/checksums)
+
+The R2 short links are latest-only download mirrors intended to be usable from mainland China network environments. R2 stores only the current latest version. For older versions, use [GitHub Releases](https://github.com/Wangnov/codex-app-mirror/releases) and download assets from the matching release/tag.
 
 Download `SHA256SUMS.txt` as well if you want to verify that the file arrived intact.
 
