@@ -62,7 +62,14 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Download macOS DMGs
-        run: bash scripts/download-macos.sh dist/macos
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > probe-manifest.json <<'JSON'
+          ${{ needs.probe.outputs.manifest }}
+          JSON
+
+          bash scripts/download-macos.sh dist/macos probe-manifest.json
 
       - name: Read macOS app metadata
         run: bash scripts/read-macos-metadata.sh dist/macos/macos-metadata.json dist/macos/Codex-mac-arm64.dmg dist/macos/Codex-mac-x64.dmg
@@ -84,7 +91,12 @@ jobs:
 
       - name: Download Windows MSIX
         shell: pwsh
-        run: ./scripts/download-windows.ps1 -OutDir dist/windows
+        run: |
+          @'
+          ${{ needs.probe.outputs.manifest }}
+          '@ | Set-Content -Encoding utf8 -Path probe-manifest.json
+
+          ./scripts/download-windows.ps1 -OutDir dist/windows -ManifestPath probe-manifest.json
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v7
