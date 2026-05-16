@@ -16,7 +16,7 @@ on:
     - cron: "*/15 * * * *"
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   R2_BUCKET_NAME: codex-app-mirror
@@ -109,6 +109,8 @@ jobs:
     name: Publish release
     runs-on: ubuntu-latest
     if: needs.probe.outputs.should_release == 'true'
+    permissions:
+      contents: write
     needs:
       - probe
       - macos
