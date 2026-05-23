@@ -152,7 +152,7 @@ jobs:
             artifacts/codex-macos/Codex-mac-x64.dmg \
             artifacts/codex-macos/SHA256SUMS-macos.txt \
             artifacts/codex-windows/* \
-            assets/banner.png \
+            assets/status.svg \
             release-manifest.json \
             SHA256SUMS.txt
 
