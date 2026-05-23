@@ -195,22 +195,22 @@
       <text x="28" y="13" class="footerAccent">15-min heartbeat</text>
     </g>
 
-    <!-- timeline (only ticks, no extra text) -->
+    <!-- timeline (ends before the artifact caption to avoid overlap) -->
     <g transform="translate(0 0)">
-      <line x1="260" y1="8" x2="1180" y2="8" stroke="#d6d3ff" stroke-width="1.2"/>
+      <line x1="260" y1="8" x2="1060" y2="8" stroke="#d6d3ff" stroke-width="1.2"/>
       <circle cx="260"  cy="8" r="3" fill="#a5b4fc"/>
-      <circle cx="370"  cy="8" r="3" fill="#a5b4fc"/>
-      <circle cx="480"  cy="8" r="3" fill="#a5b4fc"/>
-      <circle cx="590"  cy="8" r="3" fill="#a5b4fc"/>
-      <circle cx="700"  cy="8" r="3" fill="#a5b4fc"/>
-      <circle cx="810"  cy="8" r="3" fill="#a5b4fc"/>
-      <circle cx="920"  cy="8" r="3" fill="#a5b4fc"/>
-      <circle cx="1030" cy="8" r="3" fill="#a5b4fc"/>
-      <circle cx="1180" cy="8" r="3" fill="#a5b4fc"/>
+      <circle cx="360"  cy="8" r="3" fill="#a5b4fc"/>
+      <circle cx="460"  cy="8" r="3" fill="#a5b4fc"/>
+      <circle cx="560"  cy="8" r="3" fill="#a5b4fc"/>
+      <circle cx="660"  cy="8" r="3" fill="#a5b4fc"/>
+      <circle cx="760"  cy="8" r="3" fill="#a5b4fc"/>
+      <circle cx="860"  cy="8" r="3" fill="#a5b4fc"/>
+      <circle cx="960"  cy="8" r="3" fill="#a5b4fc"/>
+      <circle cx="1060" cy="8" r="3" fill="#a5b4fc"/>
 
       <!-- moving blip -->
       <circle cy="8" r="5.5" fill="#3941FF" opacity="0.85">
-        <animate attributeName="cx" from="260" to="1180" dur="6s" repeatCount="indefinite"/>
+        <animate attributeName="cx" from="260" to="1060" dur="6s" repeatCount="indefinite"/>
         <animate attributeName="opacity" values="0;0.9;0.9;0" keyTimes="0;0.06;0.94;1" dur="6s" repeatCount="indefinite"/>
       </circle>
     </g>
