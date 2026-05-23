@@ -154,7 +154,7 @@ mac_x64_etag="$(jq -r '.sources.macos.x64.etag // empty' release-manifest.json)"
 
 {
   echo "<!-- release-banner:start -->"
-  echo "![Codex App Mirror](https://github.com/Wangnov/codex-app-mirror/releases/latest/download/status.svg)"
+  echo "![Codex App Mirror](https://github.com/Wangnov/codex-app-mirror/releases/latest/download/status.png)"
   echo "<!-- release-banner:end -->"
   echo
   echo "# Codex App 安装包镜像更新"

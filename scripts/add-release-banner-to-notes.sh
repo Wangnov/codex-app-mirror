@@ -28,7 +28,7 @@ source = Path(sys.argv[1])
 target = Path(sys.argv[2])
 
 banner = """<!-- release-banner:start -->
-![Codex App Mirror](https://github.com/Wangnov/codex-app-mirror/releases/latest/download/status.svg)
+![Codex App Mirror](https://github.com/Wangnov/codex-app-mirror/releases/latest/download/status.png)
 <!-- release-banner:end -->
 """
 
