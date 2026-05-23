@@ -113,13 +113,15 @@
   <use href="#srcA" class="pipe"/>
   <use href="#srcB" class="pipe rev"/>
 
-  <!-- moving particles on upstream pipes -->
-  <circle r="3.8" fill="#6366f1" filter="url(#dotGlow)">
+  <!-- moving particles on upstream pipes (opacity=0 baseline so static PNG export doesn't show a blob at 0,0; <set> turns them on at t=0 in browsers) -->
+  <circle r="3.8" fill="#6366f1" filter="url(#dotGlow)" opacity="0">
+    <set attributeName="opacity" to="1" begin="0s"/>
     <animateMotion dur="3.2s" repeatCount="indefinite">
       <mpath href="#srcA"/>
     </animateMotion>
   </circle>
-  <circle r="3.8" fill="#7A9DFF" filter="url(#dotGlow)">
+  <circle r="3.8" fill="#7A9DFF" filter="url(#dotGlow)" opacity="0">
+    <set attributeName="opacity" to="1" begin="0s"/>
     <animateMotion dur="3.6s" repeatCount="indefinite" begin="-1.5s">
       <mpath href="#srcB"/>
     </animateMotion>
@@ -150,13 +152,15 @@
   <use href="#pubA" class="pipe"/>
   <use href="#pubB" class="pipe rev"/>
 
-  <!-- moving particles on publish pipes -->
-  <circle r="3.8" fill="#6366f1" filter="url(#dotGlow)">
+  <!-- moving particles on publish pipes (same opacity-baseline trick) -->
+  <circle r="3.8" fill="#6366f1" filter="url(#dotGlow)" opacity="0">
+    <set attributeName="opacity" to="1" begin="0s"/>
     <animateMotion dur="3.4s" repeatCount="indefinite" begin="-0.8s">
       <mpath href="#pubA"/>
     </animateMotion>
   </circle>
-  <circle r="3.8" fill="#7A9DFF" filter="url(#dotGlow)">
+  <circle r="3.8" fill="#7A9DFF" filter="url(#dotGlow)" opacity="0">
+    <set attributeName="opacity" to="1" begin="0s"/>
     <animateMotion dur="3.0s" repeatCount="indefinite" begin="-2s">
       <mpath href="#pubB"/>
     </animateMotion>
