@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/banner.png" alt="codex-app-mirror banner">
+  <img src="./assets/status.svg" alt="Codex App Mirror — mirror pipeline" width="100%">
 </p>
 
 <p align="center">
