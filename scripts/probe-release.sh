@@ -83,12 +83,48 @@ asset_size() {
   jq -r --arg name "$asset_name" '.[] | select(.name == $name) | .size' <<<"$assets_json" | head -n 1
 }
 
+sanitize_tag_part() {
+  tr -cs 'A-Za-z0-9._-' '-' <<<"$1" | sed -E 's/^-+//; s/-+$//'
+}
+
+predicted_release_tag() {
+  local windows_version="$1"
+  local arm_version="$2"
+  local arm_build="$3"
+  local x64_version="$4"
+  local x64_build="$5"
+  local windows_tag
+  local mac_tag
+
+  windows_tag="$(sanitize_tag_part "$windows_version")"
+  if [[ "$arm_version" == "$x64_version" && "$arm_build" == "$x64_build" ]]; then
+    mac_tag="mac-$(sanitize_tag_part "$arm_version")-b$(sanitize_tag_part "$arm_build")"
+  else
+    mac_tag="mac-arm64-$(sanitize_tag_part "$arm_version")-b$(sanitize_tag_part "$arm_build")-x64-$(sanitize_tag_part "$x64_version")-b$(sanitize_tag_part "$x64_build")"
+  fi
+
+  printf 'codex-app-win-%s-%s\n' "$windows_tag" "$mac_tag"
+}
+
+windows_update_wait_notice() {
+  jq -r '
+    .sources.windows as $w
+    | ($w.version // "") as $package
+    | ($w.updateManifest.buildVersion // "") as $advertised
+    | if $advertised != "" and $package != "" and $advertised != $package then
+        "Windows update manifest advertises \($advertised), but Store package is still \($package); waiting for downloadable MSIX."
+      else
+        ""
+      end
+  ' "$1"
+}
+
 manifest_key() {
   jq -S -c '{
     windows: {
+      version: .sources.windows.version,
       packageMoniker: .sources.windows.packageMoniker,
-      contentLength: .sources.windows.contentLength,
-      updateManifestBuildVersion: .sources.windows.updateManifest.buildVersion
+      contentLength: .sources.windows.contentLength
     },
     macos: {
       arm64: {
@@ -238,7 +274,12 @@ else
       previous_key="$(manifest_key "$tmp_dir/release-manifest.json")"
       if [[ "$current_key" == "$previous_key" ]]; then
         should_release="false"
-        skip_reason="manifest matches latest release $latest_tag"
+        update_notice="$(windows_update_wait_notice "$manifest_path")"
+        if [[ -n "$update_notice" ]]; then
+          skip_reason="$update_notice Latest mirrored package still matches $latest_tag."
+        else
+          skip_reason="manifest matches latest release $latest_tag"
+        fi
       fi
     else
       assets_json="$(gh release view "$latest_tag" --json assets --jq '.assets')"
@@ -251,6 +292,19 @@ else
         should_release="false"
         skip_reason="asset names and sizes match latest release $latest_tag"
       fi
+    fi
+  fi
+fi
+
+if [[ "$should_release" == "true" && "$force_release" != "true" && -z "$release_tag_input" ]]; then
+  predicted_tag="$(predicted_release_tag "$windows_version" "$arm_appcast_version" "$arm_appcast_build" "$x64_appcast_version" "$x64_appcast_build")"
+  if gh release view "$predicted_tag" >/dev/null 2>&1; then
+    should_release="false"
+    update_notice="$(windows_update_wait_notice "$manifest_path")"
+    if [[ -n "$update_notice" ]]; then
+      skip_reason="$update_notice Release tag $predicted_tag already exists."
+    else
+      skip_reason="release tag $predicted_tag already exists"
     fi
   fi
 fi
