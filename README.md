@@ -177,6 +177,16 @@ The R2 short links are latest-only download mirrors intended to be usable from m
 
 Download `SHA256SUMS.txt` as well if you want to verify that the file arrived intact.
 
+### Local Windows app-folder update
+
+If you keep a local unpacked Codex app folder, the repository includes a small helper that downloads the latest Windows MSIX release and replaces the configured `app` directory with the `app/` folder inside the archive:
+
+```bat
+scripts\install-windows-app.bat
+```
+
+Copy `scripts/install-windows-app.config.example.json` to `scripts/install-windows-app.config.json` and adjust `target_app_dir` if needed. By default it targets `%USERPROFILE%\Documents\Codex-Windows-x64\app`, keeps the downloaded MSIX in `%TEMP%\codex-app-mirror-installer`, and backs up the previous `app` folder before replacing it.
+
 ## Community
 
 This project links back to and recognizes the [LINUX DO](https://linux.do/) community. Feedback on download availability, installation results, checksums, and improvement ideas is welcome in the community discussion thread.

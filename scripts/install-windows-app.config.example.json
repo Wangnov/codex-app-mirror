@@ -1,0 +1,12 @@
+{
+  "github_repo": "Wangnov/codex-app-mirror",
+  "asset_patterns": [
+    "OpenAI.Codex_*_x64__*.Msix",
+    "*.msix"
+  ],
+  "target_app_dir": "%USERPROFILE%\\Documents\\Codex-Windows-x64\\app",
+  "download_dir": "%TEMP%\\codex-app-mirror-installer",
+  "backup_existing": true,
+  "keep_download": true,
+  "github_token_env": "GITHUB_TOKEN"
+}
