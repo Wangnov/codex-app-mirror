@@ -19,6 +19,7 @@ export default {
 
     if (secondaryCountryCodes.has(country.toUpperCase()) && hasSecondaryS3Config(env)) {
       const objectKey = objectKeyForPath(url.pathname, env.SECONDARY_S3_PREFIX || "");
+      const downloadMetadata = downloadMetadataForPath(url.pathname);
       const signedUrl = await presignS3GetUrl({
         endpoint: env.SECONDARY_S3_ENDPOINT,
         bucket: env.SECONDARY_S3_BUCKET,
@@ -27,6 +28,12 @@ export default {
         accessKeyId: env.SECONDARY_S3_ACCESS_KEY_ID,
         secretAccessKey: env.SECONDARY_S3_SECRET_ACCESS_KEY,
         expiresInSeconds: ttlSeconds(env.SECONDARY_S3_SIGNED_URL_TTL_SECONDS),
+        responseHeaders: downloadMetadata
+          ? {
+              "response-content-disposition": `attachment; filename="${downloadMetadata.filename}"`,
+              "response-content-type": downloadMetadata.contentType,
+            }
+          : {},
       });
 
       return redirect(signedUrl);
@@ -81,6 +88,33 @@ function objectKeyForPath(pathname, prefix) {
   return cleanPrefix ? `${cleanPrefix}/${cleanPath}` : cleanPath;
 }
 
+function downloadMetadataForPath(pathname) {
+  const name = pathname.replace(/^\/+/, "").split("/").pop();
+  const metadata = {
+    "mac-arm64": {
+      filename: "Codex-mac-arm64.dmg",
+      contentType: "application/x-apple-diskimage",
+    },
+    "mac-intel": {
+      filename: "Codex-mac-intel.dmg",
+      contentType: "application/x-apple-diskimage",
+    },
+    win: {
+      filename: "Codex-Windows-x64.msix",
+      contentType: "application/vnd.ms-appx",
+    },
+    checksums: {
+      filename: "SHA256SUMS.txt",
+      contentType: "text/plain; charset=utf-8",
+    },
+    manifest: {
+      filename: "release-manifest.json",
+      contentType: "application/json",
+    },
+  };
+  return metadata[name] || null;
+}
+
 async function presignS3GetUrl(options) {
   const endpointUrl = new URL(options.endpoint);
   const now = new Date();
@@ -96,6 +130,7 @@ async function presignS3GetUrl(options) {
     ["X-Amz-Date", amzDate],
     ["X-Amz-Expires", String(options.expiresInSeconds)],
     ["X-Amz-SignedHeaders", signedHeaders],
+    ...Object.entries(options.responseHeaders || {}),
   ];
   const canonicalQuery = canonicalQueryString(queryParams);
   const canonicalHeaders = `host:${endpointUrl.host}\n`;
