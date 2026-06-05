@@ -191,6 +191,10 @@ mac_x64_etag="$(jq -r '.sources.macos.x64.etag // empty' release-manifest.json)"
   echo
   echo "建议下载后使用随附的 \`SHA256SUMS.txt\` 校验文件完整性。"
   echo
+  echo "## Windows 安装策略提示"
+  echo
+  echo "如果安装 \`.Msix\` 时提示“你的系统管理员已阻止此程序”，通常是当前设备策略不允许从商店外安装 MSIX / AppX 包，或应用安装器 / AppX 部署服务被禁用。请优先尝试 Microsoft Store 官方页面；公司、学校或其他受组织策略管理的设备需要联系设备管理员放行，本镜像不会绕过本机安装策略。"
+  echo
   echo "## 来源说明"
   echo
   echo "本项目只镜像官方安装包，不修改、不重打包、不破解安装器。更完整的上游指纹记录在随附的 \`release-manifest.json\` 中。"
@@ -230,6 +234,10 @@ mac_x64_etag="$(jq -r '.sources.macos.x64.etag // empty' release-manifest.json)"
   echo "## Verification"
   echo
   echo "We recommend verifying downloaded files with the attached \`SHA256SUMS.txt\`."
+  echo
+  echo "## Windows install policy note"
+  echo
+  echo "If installing the \`.Msix\` file shows \"This app has been blocked by your system administrator\", the device is usually blocking sideloaded MSIX / AppX installation, or App Installer / AppX deployment has been disabled by policy. Prefer the official Microsoft Store page first. Work, school, or otherwise managed devices need an administrator to allow the install; this mirror does not bypass local install policies."
   echo
   echo "## Source notes"
   echo
