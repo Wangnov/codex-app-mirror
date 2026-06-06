@@ -106,7 +106,23 @@ import json
 import sys
 import xml.etree.ElementTree as ET
 
-ns = {"sparkle": "http://www.andymatuschak.org/xml-namespaces/sparkle"}
+SPARKLE = "http://www.andymatuschak.org/xml-namespaces/sparkle"
+ns = {"sparkle": SPARKLE}
+
+
+def sparkle_attr(name):
+    return "{%s}%s" % (SPARKLE, name)
+
+
+def attr_key(raw):
+    # Render the official attribute name back into appcast form, mapping the
+    # ElementTree "{ns}local" spelling onto the "sparkle:local" prefix used in
+    # the feed so the build step can re-emit it verbatim.
+    if raw.startswith("{%s}" % SPARKLE):
+        return "sparkle:" + raw[len("{%s}" % SPARKLE):]
+    return raw
+
+
 root = ET.parse(sys.stdin).getroot()
 item = root.find("./channel/item")
 if item is None:
@@ -114,7 +130,35 @@ if item is None:
 enclosure = item.find("enclosure")
 if enclosure is None:
     raise SystemExit("appcast item has no enclosure")
-sparkle_sig_key = "{http://www.andymatuschak.org/xml-namespaces/sparkle}edSignature"
+sparkle_sig_key = sparkle_attr("edSignature")
+
+# Capture every <sparkle:deltas>/<enclosure> verbatim. The mirror reuses the
+# official bytes and the official edSignature untouched; it never runs
+# BinaryDelta and never recomputes a signature. We record the prompt-named
+# fields explicitly *and* a full "attributes" map (every attribute on the
+# enclosure, with sparkle: prefixes preserved) so the build step can re-emit
+# each delta exactly as OpenAI published it, swapping only the URL host.
+deltas = []
+deltas_el = item.find("sparkle:deltas", namespaces=ns)
+if deltas_el is not None:
+    for delta in deltas_el.findall("enclosure"):
+        url = delta.attrib.get("url", "")
+        basename = url.rsplit("/", 1)[-1] if url else ""
+        attributes = {attr_key(k): v for k, v in delta.attrib.items()}
+        deltas.append(
+            {
+                "basename": basename,
+                "url": url,
+                "length": int(delta.attrib.get("length", "0") or "0"),
+                "deltaFrom": delta.attrib.get(sparkle_attr("deltaFrom"), ""),
+                "version": delta.attrib.get(sparkle_attr("version"), ""),
+                "os": delta.attrib.get(sparkle_attr("os"), ""),
+                "type": delta.attrib.get("type", ""),
+                "edSignature": delta.attrib.get(sparkle_sig_key, ""),
+                "attributes": attributes,
+            }
+        )
+
 payload = {
     "title": item.findtext("title") or "",
     "pubDate": item.findtext("pubDate") or "",
@@ -125,6 +169,7 @@ payload = {
     "enclosureUrl": enclosure.attrib.get("url", ""),
     "enclosureLength": int(enclosure.attrib.get("length", "0") or "0"),
     "enclosureSignature": enclosure.attrib.get(sparkle_sig_key, ""),
+    "deltas": deltas,
 }
 print(json.dumps(payload, sort_keys=True))
 '
