@@ -15,6 +15,8 @@ content_type_for() {
     *.dmg) printf '%s' 'application/x-apple-diskimage' ;;
     *.Msix|*.msix) printf '%s' 'application/vnd.ms-appx' ;;
     *.json) printf '%s' 'application/json' ;;
+    *.xml) printf '%s' 'application/xml' ;;
+    *.zip) printf '%s' 'application/octet-stream' ;;
     *.txt) printf '%s' 'text/plain; charset=utf-8' ;;
     *) printf '%s' 'application/octet-stream' ;;
   esac

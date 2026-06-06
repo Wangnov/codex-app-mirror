@@ -51,5 +51,9 @@ jobs:
         shell: bash
         run: scripts/test-prepare-release-metadata.sh
 
+      - name: Test appcast generation fixture
+        shell: bash
+        run: scripts/test-build-appcast.sh
+
       - name: Build Microsoft Store resolver
         run: dotnet build scripts/store-link/StoreLink.csproj --configuration Release

@@ -138,6 +138,13 @@ jobs:
             "$R2_PUBLIC_BASE_URL" \
             "${{ needs.probe.outputs.release_tag }}"
 
+      - name: Build macOS Sparkle appcasts
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/build-appcast.sh arm64 release-manifest.json "$R2_PUBLIC_BASE_URL" appcast.xml
+          bash scripts/build-appcast.sh x64 release-manifest.json "$R2_PUBLIC_BASE_URL" appcast-x64.xml
+
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -145,11 +152,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # The Sparkle .zip archives are checksummed in SHA256SUMS.txt, so attach
+          # them to the Release too (keeps every listed checksum downloadable and
+          # gives the archives a canonical immutable home alongside the mirror).
+          arm_short_version="$(jq -r '.sources.macos.arm64.appcast.shortVersionString' release-manifest.json)"
+          x64_short_version="$(jq -r '.sources.macos.x64.appcast.shortVersionString' release-manifest.json)"
+          mac_arm64_zip="artifacts/codex-macos/Codex-darwin-arm64-${arm_short_version}.zip"
+          mac_intel_zip="artifacts/codex-macos/Codex-darwin-x64-${x64_short_version}.zip"
+          test -f "$mac_arm64_zip"
+          test -f "$mac_intel_zip"
+
           gh release create "${{ steps.meta.outputs.tag }}" \
             --title "${{ steps.meta.outputs.title }}" \
             --notes-file release-notes.md \
             artifacts/codex-macos/Codex-mac-arm64.dmg \
             artifacts/codex-macos/Codex-mac-x64.dmg \
+            "$mac_arm64_zip" \
+            "$mac_intel_zip" \
             artifacts/codex-macos/SHA256SUMS-macos.txt \
             artifacts/codex-windows/* \
             assets/status.png \
@@ -191,6 +210,21 @@ jobs:
           test -f "$mac_intel"
           test -f "$win_msix"
 
+          # Sparkle update archives the generated appcasts point at. Their object
+          # keys (latest/mac/{arm64,intel}/...) must match the enclosure URLs that
+          # build-appcast.sh emits, or the client's downloads would 404.
+          arm_short_version="$(jq -r '.sources.macos.arm64.appcast.shortVersionString' release-manifest.json)"
+          x64_short_version="$(jq -r '.sources.macos.x64.appcast.shortVersionString' release-manifest.json)"
+          mac_arm64_zip="artifacts/codex-macos/Codex-darwin-arm64-${arm_short_version}.zip"
+          mac_intel_zip="artifacts/codex-macos/Codex-darwin-x64-${x64_short_version}.zip"
+          arm_zip_key="latest/mac/arm64/Codex-darwin-arm64-${arm_short_version}.zip"
+          intel_zip_key="latest/mac/intel/Codex-darwin-x64-${x64_short_version}.zip"
+
+          test -f "$mac_arm64_zip"
+          test -f "$mac_intel_zip"
+          test -f appcast.xml
+          test -f appcast-x64.xml
+
           staging_prefix="staging/${{ steps.meta.outputs.tag }}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           cleanup_staging() {
             bash scripts/clear-r2-prefix.sh "$R2_BUCKET_NAME" "$staging_prefix" || true
@@ -206,6 +240,15 @@ jobs:
             bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/manifest" release-manifest.json release-manifest.json
           }
 
+          # appcast feeds are small and change every release, so keep their CDN
+          # cache short; the versioned Sparkle archives are immutable.
+          upload_appcast() {
+            local key="$1"
+            local file="$2"
+            R2_CACHE_CONTROL="public, max-age=600" \
+              bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$key" "$file" "$(basename "$file")"
+          }
+
           upload_aliases "$staging_prefix"
           aws s3 cp "s3://$R2_BUCKET_NAME/$staging_prefix/manifest" /tmp/r2-staging-manifest.json \
             --endpoint-url "$R2_S3_ENDPOINT" \
@@ -219,6 +262,13 @@ jobs:
           bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/checksums SHA256SUMS.txt SHA256SUMS.txt
           bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/manifest release-manifest.json release-manifest.json
 
+          # Sparkle archives first, then the appcasts that reference them, so the
+          # feed never advertises an enclosure that is not yet downloadable.
+          bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$arm_zip_key" "$mac_arm64_zip" "$(basename "$mac_arm64_zip")"
+          bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$intel_zip_key" "$mac_intel_zip" "$(basename "$mac_intel_zip")"
+          upload_appcast latest/appcast.xml appcast.xml
+          upload_appcast latest/appcast-x64.xml appcast-x64.xml
+
           curl -fsSL \
             --retry 5 \
             --retry-delay 2 \
@@ -228,6 +278,28 @@ jobs:
             "$R2_PUBLIC_BASE_URL/latest/manifest?run=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
             -o /tmp/r2-public-manifest.json
           cmp release-manifest.json /tmp/r2-public-manifest.json
+
+          # Read the appcasts back through the public CDN and diff against what we
+          # generated. If R2 ever silently stops accepting these objects, this
+          # fails the workflow instead of leaving a stale (orphaned) feed behind.
+          curl -fsSL \
+            --retry 5 \
+            --retry-delay 2 \
+            --retry-all-errors \
+            --connect-timeout 20 \
+            --max-time 120 \
+            "$R2_PUBLIC_BASE_URL/latest/appcast.xml?run=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            -o /tmp/r2-public-appcast.xml
+          cmp appcast.xml /tmp/r2-public-appcast.xml
+          curl -fsSL \
+            --retry 5 \
+            --retry-delay 2 \
+            --retry-all-errors \
+            --connect-timeout 20 \
+            --max-time 120 \
+            "$R2_PUBLIC_BASE_URL/latest/appcast-x64.xml?run=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            -o /tmp/r2-public-appcast-x64.xml
+          cmp appcast-x64.xml /tmp/r2-public-appcast-x64.xml
 
       - name: Sync GitHub Release assets to secondary S3 mirror
         env:
@@ -254,16 +326,29 @@ jobs:
           mac_intel="artifacts/codex-macos/Codex-mac-x64.dmg"
           win_msix="$(find artifacts/codex-windows -maxdepth 1 -type f \( -name '*.Msix' -o -name '*.msix' \) | sort | head -n 1)"
 
+          arm_short_version="$(jq -r '.sources.macos.arm64.appcast.shortVersionString' release-manifest.json)"
+          x64_short_version="$(jq -r '.sources.macos.x64.appcast.shortVersionString' release-manifest.json)"
+          mac_arm64_zip="artifacts/codex-macos/Codex-darwin-arm64-${arm_short_version}.zip"
+          mac_intel_zip="artifacts/codex-macos/Codex-darwin-x64-${x64_short_version}.zip"
+
           test -f "$mac_arm64"
           test -f "$mac_intel"
           test -f "$win_msix"
+          test -f "$mac_arm64_zip"
+          test -f "$mac_intel_zip"
+          test -f appcast.xml
+          test -f appcast-x64.xml
 
           bash scripts/sync-secondary-s3.sh \
             "$mac_arm64" \
             "$mac_intel" \
             "$win_msix" \
             SHA256SUMS.txt \
-            release-manifest.json
+            release-manifest.json \
+            "$mac_arm64_zip" \
+            "$mac_intel_zip" \
+            appcast.xml \
+            appcast-x64.xml
 
           tmp_config="$(mktemp)"
           cleanup() {
@@ -277,15 +362,28 @@ jobs:
               addressing_style = path
           EOF
 
-          AWS_ACCESS_KEY_ID="$SECONDARY_S3_ACCESS_KEY_ID" \
-          AWS_SECRET_ACCESS_KEY="$SECONDARY_S3_SECRET_ACCESS_KEY" \
-          AWS_DEFAULT_REGION="$SECONDARY_S3_REGION" \
-          AWS_CONFIG_FILE="$tmp_config" \
-          aws s3 cp "s3://$SECONDARY_S3_BUCKET/latest/manifest" /tmp/secondary-s3-manifest.json \
-            --endpoint-url "$SECONDARY_S3_ENDPOINT" \
-            --region "$SECONDARY_S3_REGION" \
-            --no-progress
+          secondary_readback() {
+            local key="$1"
+            local dest="$2"
+            AWS_ACCESS_KEY_ID="$SECONDARY_S3_ACCESS_KEY_ID" \
+            AWS_SECRET_ACCESS_KEY="$SECONDARY_S3_SECRET_ACCESS_KEY" \
+            AWS_DEFAULT_REGION="$SECONDARY_S3_REGION" \
+            AWS_CONFIG_FILE="$tmp_config" \
+            aws s3 cp "s3://$SECONDARY_S3_BUCKET/$key" "$dest" \
+              --endpoint-url "$SECONDARY_S3_ENDPOINT" \
+              --region "$SECONDARY_S3_REGION" \
+              --no-progress
+          }
+
+          secondary_readback latest/manifest /tmp/secondary-s3-manifest.json
           cmp release-manifest.json /tmp/secondary-s3-manifest.json
+
+          # Read the appcasts back from the secondary bucket and diff. Keeps the
+          # secondary feed from silently drifting out of sync with each release.
+          secondary_readback latest/appcast.xml /tmp/secondary-s3-appcast.xml
+          cmp appcast.xml /tmp/secondary-s3-appcast.xml
+          secondary_readback latest/appcast-x64.xml /tmp/secondary-s3-appcast-x64.xml
+          cmp appcast-x64.xml /tmp/secondary-s3-appcast-x64.xml
 
   no_changes:
     name: No new version
