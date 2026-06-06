@@ -12,9 +12,15 @@ set -euo pipefail
 # This script therefore copies every upstream appcast field verbatim
 # (shortVersionString, version, minimumSystemVersion, pubDate, title,
 # hardwareRequirements, enclosureLength, enclosureSignature) and only rewrites
-# the enclosure URL to the mirrored archive location. It intentionally emits a
-# full-update-only appcast: the probe does not capture upstream deltas, and the
-# client gracefully falls back to the full archive when no delta matches.
+# the enclosure URL to the mirrored archive location.
+#
+# When the probe captured upstream <sparkle:deltas>, this script re-emits them
+# too: one delta <enclosure> per entry with the URL host swapped to the mirror
+# and every other attribute (notably each delta's own sparkle:edSignature) kept
+# byte-for-byte. The mirror never runs BinaryDelta and never recomputes a
+# signature; it copies the official delta bytes + signatures verbatim. The full
+# <enclosure> is always present, so a client with no matching delta still falls
+# back to the full archive.
 #
 # Usage:
 #   build-appcast.sh <arch> <manifest> <public-base-url> <output-path>
@@ -92,6 +98,14 @@ fi
 
 enclosure_url="$base/latest/$mirror_dir/Codex-darwin-${archive_arch}-${short_version}.zip"
 
+# Delta enclosures the official appcast advertises under <sparkle:deltas>. The
+# probe captured each one verbatim (every attribute, including the official
+# edSignature). We re-emit them unchanged except for swapping the enclosure URL
+# host to the mirror; the bytes (and therefore the signature) are untouched and
+# we never run BinaryDelta. Empty/missing array => a full-update-only feed, which
+# is exactly today's behaviour, so existing releases stay byte-identical.
+deltas_json="$(jq -c --arg a "$manifest_key" '.sources.macos[$a].appcast.deltas // []' "$manifest")"
+
 python3 - \
   "$output_path" \
   "$title" \
@@ -102,7 +116,11 @@ python3 - \
   "$hardware_requirements" \
   "$enclosure_url" \
   "$enclosure_length" \
-  "$enclosure_signature" <<'PY'
+  "$enclosure_signature" \
+  "$base" \
+  "$mirror_dir" \
+  "$deltas_json" <<'PY'
+import json
 import sys
 from xml.sax.saxutils import escape, quoteattr
 
@@ -117,9 +135,60 @@ from xml.sax.saxutils import escape, quoteattr
     enclosure_url,
     enclosure_length,
     enclosure_signature,
+    mirror_base,
+    mirror_dir,
+    deltas_json,
 ) = sys.argv[1:]
 
 SPARKLE_NS = "http://www.andymatuschak.org/xml-namespaces/sparkle"
+
+deltas = json.loads(deltas_json) if deltas_json else []
+
+
+def delta_enclosure_line(delta):
+    # Resolve the mirror URL from the official basename so URL resolution through
+    # the Worker stays stable. Preserve the basename exactly as published.
+    basename = delta.get("basename") or (delta.get("url", "").rsplit("/", 1)[-1])
+    if not basename:
+        raise SystemExit("delta enclosure missing basename/url")
+    mirror_url = f"{mirror_base}/latest/{mirror_dir}/{basename}"
+
+    # Start from every attribute the probe captured (verbatim, sparkle: prefixes
+    # preserved) so we faithfully reproduce OpenAI's enclosure, then override the
+    # URL with the mirror location. Fall back to the explicit prompt-named fields
+    # if an older manifest predates the full "attributes" map.
+    attrs = dict(delta.get("attributes") or {})
+    if not attrs:
+        attrs = {
+            "url": delta.get("url", ""),
+            "sparkle:deltaFrom": delta.get("deltaFrom", ""),
+            "length": str(delta.get("length", "")),
+            "type": delta.get("type", "") or "application/octet-stream",
+            "sparkle:edSignature": delta.get("edSignature", ""),
+        }
+        if delta.get("version"):
+            attrs["sparkle:version"] = delta["version"]
+        if delta.get("os"):
+            attrs["sparkle:os"] = delta["os"]
+        attrs = {k: v for k, v in attrs.items() if v != ""}
+    attrs["url"] = mirror_url
+
+    # Emit a stable, readable attribute order: url first, then the Sparkle
+    # delta-identifying / signature attributes, then any remaining official
+    # attributes (sorted) so nothing OpenAI published is dropped.
+    preferred = [
+        "url",
+        "sparkle:deltaFrom",
+        "sparkle:version",
+        "sparkle:os",
+        "length",
+        "type",
+        "sparkle:edSignature",
+    ]
+    ordered = [k for k in preferred if k in attrs]
+    ordered += [k for k in sorted(attrs) if k not in preferred]
+    rendered = " ".join(f"{k}={quoteattr(str(attrs[k]))}" for k in ordered)
+    return f"                <enclosure {rendered} />"
 
 lines = []
 lines.append("<?xml version='1.0' encoding='utf-8'?>")
@@ -151,6 +220,14 @@ enclosure_attrs = " ".join(
     ]
 )
 lines.append(f"            <enclosure {enclosure_attrs} />")
+# Delta enclosures (incremental updates). Emitted only when upstream advertised
+# them; the full <enclosure> above is always present so clients without a
+# matching delta still fall back to the full archive.
+if deltas:
+    lines.append("            <sparkle:deltas>")
+    for delta in deltas:
+        lines.append(delta_enclosure_line(delta))
+    lines.append("            </sparkle:deltas>")
 lines.append("        </item>")
 lines.append("    </channel>")
 lines.append("</rss>")

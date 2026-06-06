@@ -16,6 +16,12 @@ trap cleanup EXIT
 arm_sig="fQ7rDmk/lQGGg8JReeCvN+ct0Db3z6MFvV8FqgI9ZzpYNKpjWalf2vfLi8TqSCVBF+jXs20U3FGwTeaWocDYBg=="
 x64_sig="6OM9z2K/DXc05QidSyspEl9LXe1s5E8HesofMpw9vQ/nBNK39pSarOqGt6u1jA+VyDy4pbsphk4WAUH8D3eKDg=="
 
+# Delta enclosure fixtures (real upstream shape: each has its own edSignature and
+# the deltaFromSparkle* attributes Sparkle publishes). arm64 ships two deltas to
+# exercise the delta path; x64 ships none to exercise the full-update-only path.
+arm_delta1_sig="46z2mpw1xOZWuQ0rpQn+tZ5yRQL/GmJN2UJ7qpS7IC7NILk9xxHALGnGa8gRZvKK3lV9ni11AnXCCPbRQMKXDg=="
+arm_delta2_sig="uIgT0RouyKTkFMQ/MNFhITkvxyNhEfnsXgvKCKVWxv8FedrmWvLYWzwAFcz86UEx2JaszL2QfMIM5u3yOIrIBg=="
+
 cat > "$tmp_dir/release-manifest.json" <<JSON
 {
   "schemaVersion": 2,
@@ -31,7 +37,47 @@ cat > "$tmp_dir/release-manifest.json" <<JSON
           "hardwareRequirements": "arm64",
           "enclosureUrl": "https://persistent.oaistatic.com/codex-app-prod/Codex-darwin-arm64-26.602.40724.zip",
           "enclosureLength": 406585586,
-          "enclosureSignature": "$arm_sig"
+          "enclosureSignature": "$arm_sig",
+          "deltas": [
+            {
+              "basename": "Codex3593-3575-arm64.delta",
+              "url": "https://persistent.oaistatic.com/codex-app-prod/Codex3593-3575-arm64.delta",
+              "length": 195130,
+              "deltaFrom": "3575",
+              "version": "",
+              "os": "",
+              "type": "application/octet-stream",
+              "edSignature": "$arm_delta1_sig",
+              "attributes": {
+                "url": "https://persistent.oaistatic.com/codex-app-prod/Codex3593-3575-arm64.delta",
+                "length": "195130",
+                "type": "application/octet-stream",
+                "sparkle:deltaFrom": "3575",
+                "sparkle:deltaFromSparkleExecutableSize": "979952",
+                "sparkle:deltaFromSparkleLocales": "de,ar,el,ja,fa,uk,zh_CN",
+                "sparkle:edSignature": "$arm_delta1_sig"
+              }
+            },
+            {
+              "basename": "Codex3593-3511-arm64.delta",
+              "url": "https://persistent.oaistatic.com/codex-app-prod/Codex3593-3511-arm64.delta",
+              "length": 18255214,
+              "deltaFrom": "3511",
+              "version": "",
+              "os": "",
+              "type": "application/octet-stream",
+              "edSignature": "$arm_delta2_sig",
+              "attributes": {
+                "url": "https://persistent.oaistatic.com/codex-app-prod/Codex3593-3511-arm64.delta",
+                "length": "18255214",
+                "type": "application/octet-stream",
+                "sparkle:deltaFrom": "3511",
+                "sparkle:deltaFromSparkleExecutableSize": "979952",
+                "sparkle:deltaFromSparkleLocales": "de,ar,el,ja,fa,uk,zh_CN",
+                "sparkle:edSignature": "$arm_delta2_sig"
+              }
+            }
+          ]
         }
       },
       "x64": {
@@ -44,7 +90,8 @@ cat > "$tmp_dir/release-manifest.json" <<JSON
           "hardwareRequirements": "",
           "enclosureUrl": "https://persistent.oaistatic.com/codex-app-prod/Codex-darwin-x64-26.602.40724.zip",
           "enclosureLength": 397428010,
-          "enclosureSignature": "$x64_sig"
+          "enclosureSignature": "$x64_sig",
+          "deltas": []
         }
       }
     }
@@ -86,7 +133,21 @@ assert_contains "$tmp_dir/appcast.xml" '<sparkle:shortVersionString>26.602.40724
 assert_contains "$tmp_dir/appcast.xml" '<sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>'
 assert_contains "$tmp_dir/appcast.xml" '<sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>'
 assert_contains "$tmp_dir/appcast.xml" 'type="application/octet-stream"'
-# Never leak the upstream enclosure host into the mirror feed.
+
+# arm64 deltas: a <sparkle:deltas> block whose enclosures point at the mirror,
+# preserve the official basename, and reuse each delta's edSignature/length/
+# deltaFrom verbatim. The extra deltaFromSparkle* attributes are kept too.
+assert_contains "$tmp_dir/appcast.xml" '<sparkle:deltas>'
+assert_contains "$tmp_dir/appcast.xml" 'url="https://codexapp.agentsmirror.com/latest/mac/arm64/Codex3593-3575-arm64.delta"'
+assert_contains "$tmp_dir/appcast.xml" 'url="https://codexapp.agentsmirror.com/latest/mac/arm64/Codex3593-3511-arm64.delta"'
+assert_contains "$tmp_dir/appcast.xml" 'sparkle:deltaFrom="3575"'
+assert_contains "$tmp_dir/appcast.xml" 'sparkle:deltaFrom="3511"'
+assert_contains "$tmp_dir/appcast.xml" "sparkle:edSignature=\"$arm_delta1_sig\""
+assert_contains "$tmp_dir/appcast.xml" "sparkle:edSignature=\"$arm_delta2_sig\""
+assert_contains "$tmp_dir/appcast.xml" 'length="195130"'
+assert_contains "$tmp_dir/appcast.xml" 'sparkle:deltaFromSparkleExecutableSize="979952"'
+assert_contains "$tmp_dir/appcast.xml" 'sparkle:deltaFromSparkleLocales="de,ar,el,ja,fa,uk,zh_CN"'
+# Never leak the upstream enclosure host into the mirror feed (full or delta).
 assert_absent "$tmp_dir/appcast.xml" 'persistent.oaistatic.com'
 
 # x64: own enclosure name + signature, and no hardwareRequirements element.
@@ -95,6 +156,10 @@ assert_contains "$tmp_dir/appcast-x64.xml" "sparkle:edSignature=\"$x64_sig\""
 assert_contains "$tmp_dir/appcast-x64.xml" 'length="397428010"'
 assert_absent "$tmp_dir/appcast-x64.xml" 'hardwareRequirements'
 assert_absent "$tmp_dir/appcast-x64.xml" 'persistent.oaistatic.com'
+# x64 has no upstream deltas: the feed must stay full-update-only (no empty
+# <sparkle:deltas> element, no .delta enclosures).
+assert_absent "$tmp_dir/appcast-x64.xml" '<sparkle:deltas>'
+assert_absent "$tmp_dir/appcast-x64.xml" '.delta"'
 
 # Both feeds must be well-formed XML with exactly one <item>.
 for feed in "$tmp_dir/appcast.xml" "$tmp_dir/appcast-x64.xml"; do
@@ -119,6 +184,42 @@ assert item.findtext(
 ), "missing sparkle:shortVersionString"
 PY
 done
+
+# Structural delta checks: arm64 has exactly the two upstream deltas (each a
+# mirror URL with its own verbatim edSignature); x64 has no <sparkle:deltas>.
+python3 - "$tmp_dir/appcast.xml" "$arm_delta1_sig" "$arm_delta2_sig" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+SP = "{http://www.andymatuschak.org/xml-namespaces/sparkle}"
+feed, sig1, sig2 = sys.argv[1:]
+item = ET.parse(feed).getroot().find("./channel/item")
+deltas = item.find(SP + "deltas")
+assert deltas is not None, "arm64 feed must have <sparkle:deltas>"
+encs = deltas.findall("enclosure")
+assert len(encs) == 2, f"expected 2 deltas, got {len(encs)}"
+by_from = {e.attrib.get(SP + "deltaFrom"): e for e in encs}
+assert set(by_from) == {"3575", "3511"}, sorted(by_from)
+for e in encs:
+    url = e.attrib["url"]
+    assert url.startswith(
+        "https://codexapp.agentsmirror.com/latest/mac/arm64/"
+    ), url
+    assert url.endswith(".delta"), url
+    assert e.attrib.get(SP + "edSignature"), "delta missing edSignature"
+    assert e.attrib.get("length"), "delta missing length"
+assert by_from["3575"].attrib[SP + "edSignature"] == sig1
+assert by_from["3511"].attrib[SP + "edSignature"] == sig2
+PY
+
+python3 - "$tmp_dir/appcast-x64.xml" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+SP = "{http://www.andymatuschak.org/xml-namespaces/sparkle}"
+item = ET.parse(sys.argv[1]).getroot().find("./channel/item")
+assert item.find(SP + "deltas") is None, "x64 feed must not have <sparkle:deltas>"
+PY
 
 # Missing appcast metadata must fail loudly (the guard against shipping a broken feed).
 cat > "$tmp_dir/empty-manifest.json" <<'JSON'
