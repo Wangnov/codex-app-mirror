@@ -63,6 +63,50 @@ appcast_x64="$9"
 mac_arm64_zip_name="$(basename "$mac_arm64_zip")"
 mac_intel_zip_name="$(basename "$mac_intel_zip")"
 
+# Extract the .delta enclosure basenames an appcast references. The mirror keeps
+# the official basenames verbatim, so the basename is enough to locate the file
+# (downloaded alongside the full .zip) and to build the object key.
+delta_basenames_from_appcast() {
+  local appcast="$1"
+  python3 - "$appcast" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+SP = "{http://www.andymatuschak.org/xml-namespaces/sparkle}"
+item = ET.parse(sys.argv[1]).getroot().find("./channel/item")
+if item is None:
+    sys.exit(0)
+deltas = item.find(SP + "deltas")
+if deltas is None:
+    sys.exit(0)
+for enc in deltas.findall("enclosure"):
+    url = enc.attrib.get("url", "")
+    if url:
+        print(url.rsplit("/", 1)[-1])
+PY
+}
+
+# Upload every .delta the given appcast references, from the same directory as
+# its full .zip, into <prefix>/mac/<dir>/<basename>. Done before the appcasts are
+# published so the feed never advertises a delta that is not yet downloadable.
+upload_deltas_for_appcast() {
+  local appcast="$1"
+  local zip_path="$2"
+  local mac_dir="$3"
+  local src_dir
+  local bn
+
+  src_dir="$(dirname "$zip_path")"
+  while IFS= read -r bn; do
+    [[ -z "$bn" ]] && continue
+    if [[ ! -f "$src_dir/$bn" ]]; then
+      echo "Missing delta archive $src_dir/$bn referenced by $appcast." >&2
+      exit 1
+    fi
+    bash "$repo_root/scripts/sync-r2.sh" --object "$SECONDARY_S3_BUCKET" "$prefix/mac/$mac_dir/$bn" "$src_dir/$bn" "$bn"
+  done < <(delta_basenames_from_appcast "$appcast")
+}
+
 bash "$repo_root/scripts/sync-r2.sh" --object "$SECONDARY_S3_BUCKET" "$prefix/mac-arm64" "$mac_arm64" Codex-mac-arm64.dmg
 bash "$repo_root/scripts/sync-r2.sh" --object "$SECONDARY_S3_BUCKET" "$prefix/mac-intel" "$mac_intel" Codex-mac-intel.dmg
 bash "$repo_root/scripts/sync-r2.sh" --object "$SECONDARY_S3_BUCKET" "$prefix/win" "$win_msix" Codex-Windows-x64.msix
@@ -70,9 +114,12 @@ bash "$repo_root/scripts/sync-r2.sh" --object "$SECONDARY_S3_BUCKET" "$prefix/ch
 bash "$repo_root/scripts/sync-r2.sh" --object "$SECONDARY_S3_BUCKET" "$prefix/manifest" "$manifest" release-manifest.json
 
 # Sparkle update archives, keyed to match the appcast enclosure URLs. Upload the
-# archives before the appcasts so the feed never advertises a missing enclosure.
+# archives (full .zip + every .delta) before the appcasts so the feed never
+# advertises a missing enclosure.
 bash "$repo_root/scripts/sync-r2.sh" --object "$SECONDARY_S3_BUCKET" "$prefix/mac/arm64/$mac_arm64_zip_name" "$mac_arm64_zip" "$mac_arm64_zip_name"
 bash "$repo_root/scripts/sync-r2.sh" --object "$SECONDARY_S3_BUCKET" "$prefix/mac/intel/$mac_intel_zip_name" "$mac_intel_zip" "$mac_intel_zip_name"
+upload_deltas_for_appcast "$appcast_arm64" "$mac_arm64_zip" arm64
+upload_deltas_for_appcast "$appcast_x64" "$mac_intel_zip" intel
 
 # appcast feeds change every release; keep their CDN cache short.
 R2_CACHE_CONTROL="public, max-age=600" \

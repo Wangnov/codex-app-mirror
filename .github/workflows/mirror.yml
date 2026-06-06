@@ -225,6 +225,20 @@ jobs:
           test -f appcast.xml
           test -f appcast-x64.xml
 
+          # Sparkle delta archives (.delta) advertised under <sparkle:deltas>.
+          # Their basenames come straight from release-manifest.json (the same
+          # source build-appcast.sh used), and they were downloaded verbatim into
+          # artifacts/codex-macos/. arm64 deltas key under latest/mac/arm64/ and
+          # x64 deltas under latest/mac/intel/, matching the mirror enclosure URLs.
+          # Listed into files (one basename per line) to avoid relying on bash
+          # array semantics, consistent with the other mirror scripts.
+          jq -r '.sources.macos.arm64.appcast.deltas[]?.basename // empty' release-manifest.json > /tmp/arm-delta-basenames.txt
+          jq -r '.sources.macos.x64.appcast.deltas[]?.basename // empty' release-manifest.json > /tmp/x64-delta-basenames.txt
+          while IFS= read -r bn; do
+            [[ -z "$bn" ]] && continue
+            test -f "artifacts/codex-macos/$bn"
+          done < <(cat /tmp/arm-delta-basenames.txt /tmp/x64-delta-basenames.txt)
+
           staging_prefix="staging/${{ steps.meta.outputs.tag }}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           cleanup_staging() {
             bash scripts/clear-r2-prefix.sh "$R2_BUCKET_NAME" "$staging_prefix" || true
@@ -263,9 +277,18 @@ jobs:
           bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/manifest release-manifest.json release-manifest.json
 
           # Sparkle archives first, then the appcasts that reference them, so the
-          # feed never advertises an enclosure that is not yet downloadable.
+          # feed never advertises an enclosure that is not yet downloadable. The
+          # full .zip and every .delta go up before the appcasts are published.
           bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$arm_zip_key" "$mac_arm64_zip" "$(basename "$mac_arm64_zip")"
           bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$intel_zip_key" "$mac_intel_zip" "$(basename "$mac_intel_zip")"
+          while IFS= read -r bn; do
+            [[ -z "$bn" ]] && continue
+            bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "latest/mac/arm64/$bn" "artifacts/codex-macos/$bn" "$bn"
+          done < /tmp/arm-delta-basenames.txt
+          while IFS= read -r bn; do
+            [[ -z "$bn" ]] && continue
+            bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "latest/mac/intel/$bn" "artifacts/codex-macos/$bn" "$bn"
+          done < /tmp/x64-delta-basenames.txt
           upload_appcast latest/appcast.xml appcast.xml
           upload_appcast latest/appcast-x64.xml appcast-x64.xml
 
@@ -302,12 +325,16 @@ jobs:
           cmp appcast-x64.xml /tmp/r2-public-appcast-x64.xml
 
           # Keep latest/mac bounded without racing cached appcasts: only stale
-          # archives outside the grace window are removed.
+          # archives outside the grace window are removed. Pass the freshly built
+          # appcasts so the keep list protects the current full .zip AND every
+          # live .delta they reference (prune-mac-source.sh parses the feeds).
           bash scripts/prune-mac-source.sh \
             "$R2_BUCKET_NAME" \
             latest/mac \
             "$mac_arm64_zip" \
-            "$mac_intel_zip"
+            "$mac_intel_zip" \
+            appcast.xml \
+            appcast-x64.xml
 
       - name: Sync GitHub Release assets to secondary S3 mirror
         env:
