@@ -133,11 +133,68 @@ download_zip() {
 download_zip "macOS arm64 Sparkle archive" "$arm_zip_url" "$arm_zip_name" "$arm_zip_expected_size"
 download_zip "macOS x64 Sparkle archive" "$x64_zip_url" "$x64_zip_name" "$x64_zip_expected_size"
 
+# Mirror the Sparkle delta archives (.delta) the official appcast advertises
+# under <sparkle:deltas>. Like the full .zip archives, the bytes are copied
+# verbatim so the official EdDSA signature stays valid; we NEVER run BinaryDelta
+# and NEVER touch the edSignature. The official basename is preserved exactly
+# (the enclosure URL the mirror publishes is resolved by basename), and the byte
+# length is checked against the appcast `length` as an integrity guard. Deltas
+# land alongside the full zips in $out_dir, the same staging layout the zips use.
+#
+# The downloaded delta basenames are recorded (one per line) so they can be
+# appended to SHA256SUMS-macos.txt without relying on bash arrays (the macOS
+# runner's bash 3.2 errors on expanding an empty array under `set -u`).
+mac_delta_names_file="$(mktemp)"
+trap 'rm -f "$mac_delta_names_file"' EXIT
+: > "$mac_delta_names_file"
+
+download_deltas() {
+  local arch_key="$1"
+  local count i
+  local url basename expected_size
+
+  if [[ -z "$manifest_path" ]]; then
+    return 0
+  fi
+
+  count="$(jq -r --arg a "$arch_key" '.sources.macos[$a].appcast.deltas | length // 0' "$manifest_path")"
+  if [[ -z "$count" || "$count" == "null" || "$count" -eq 0 ]]; then
+    return 0
+  fi
+
+  for ((i = 0; i < count; i++)); do
+    url="$(jq -r --arg a "$arch_key" --argjson i "$i" '.sources.macos[$a].appcast.deltas[$i].url // ""' "$manifest_path")"
+    basename="$(jq -r --arg a "$arch_key" --argjson i "$i" '.sources.macos[$a].appcast.deltas[$i].basename // ""' "$manifest_path")"
+    expected_size="$(jq -r --arg a "$arch_key" --argjson i "$i" '.sources.macos[$a].appcast.deltas[$i].length // 0' "$manifest_path")"
+
+    if [[ -z "$url" || "$url" == "null" ]]; then
+      echo "Missing macOS $arch_key delta[$i] URL in manifest; cannot mirror Sparkle delta." >&2
+      exit 1
+    fi
+    if [[ -z "$basename" || "$basename" == "null" ]]; then
+      # Preserve the official filename: fall back to the URL basename if the
+      # probe did not record one explicitly.
+      basename="${url##*/}"
+    fi
+    if [[ -z "$basename" ]]; then
+      echo "Could not determine macOS $arch_key delta[$i] basename." >&2
+      exit 1
+    fi
+
+    download_file "macOS $arch_key Sparkle delta ($basename)" "$url" "$out_dir/$basename"
+    validate_size "$out_dir/$basename" "$expected_size"
+    printf '%s\n' "$basename" >> "$mac_delta_names_file"
+  done
+}
+
+download_deltas arm64
+download_deltas x64
+
 (
   cd "$out_dir"
-  # Always checksum both DMGs; append any mirrored Sparkle archives. Built as a
-  # positional list (not an array) so it stays safe under `set -u` on the macOS
-  # runner's bash 3.2, where expanding an empty array is an error.
+  # Always checksum both DMGs; append any mirrored Sparkle archives + deltas.
+  # Built as a positional list (not an array) so it stays safe under `set -u` on
+  # the macOS runner's bash 3.2, where expanding an empty array is an error.
   set -- Codex-mac-arm64.dmg Codex-mac-x64.dmg
   if [[ -n "$arm_zip_name" && -f "$arm_zip_name" ]]; then
     set -- "$@" "$arm_zip_name"
@@ -145,5 +202,11 @@ download_zip "macOS x64 Sparkle archive" "$x64_zip_url" "$x64_zip_name" "$x64_zi
   if [[ -n "$x64_zip_name" && -f "$x64_zip_name" ]]; then
     set -- "$@" "$x64_zip_name"
   fi
+  while IFS= read -r delta_name; do
+    [[ -z "$delta_name" ]] && continue
+    if [[ -f "$delta_name" ]]; then
+      set -- "$@" "$delta_name"
+    fi
+  done < "$mac_delta_names_file"
   shasum -a 256 "$@" > SHA256SUMS-macos.txt
 )
