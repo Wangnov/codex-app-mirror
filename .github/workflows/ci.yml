@@ -55,5 +55,9 @@ jobs:
         shell: bash
         run: scripts/test-build-appcast.sh
 
+      - name: Test macOS Sparkle prune fixture
+        shell: bash
+        run: scripts/test-prune-mac-source.sh
+
       - name: Build Microsoft Store resolver
         run: dotnet build scripts/store-link/StoreLink.csproj --configuration Release

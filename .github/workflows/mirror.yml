@@ -301,6 +301,14 @@ jobs:
             -o /tmp/r2-public-appcast-x64.xml
           cmp appcast-x64.xml /tmp/r2-public-appcast-x64.xml
 
+          # Keep latest/mac bounded without racing cached appcasts: only stale
+          # archives outside the grace window are removed.
+          bash scripts/prune-mac-source.sh \
+            "$R2_BUCKET_NAME" \
+            latest/mac \
+            "$mac_arm64_zip" \
+            "$mac_intel_zip"
+
       - name: Sync GitHub Release assets to secondary S3 mirror
         env:
           SECONDARY_S3_ENDPOINT: ${{ secrets.SECONDARY_S3_ENDPOINT }}
