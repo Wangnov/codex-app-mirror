@@ -113,4 +113,50 @@ if grep -Eq 'Codex9999-live-arm64\.delta|Codex9999-live-x64\.delta' "$rm_log"; t
   exit 1
 fi
 
+# Secondary mirror (IHEP S3) case: the mirror.yml prune step maps the
+# SECONDARY_S3_* credentials/endpoint onto the R2/AWS env vars the script expects
+# and runs against a different bucket while keeping the same safety rules. Drive
+# the script through that same mapping and assert it prunes only the stale object.
+secondary_rm_log="$tmp_dir/rm-secondary.log"
+: > "$secondary_rm_log"
+
+PATH="$tmp_dir/bin:$PATH" \
+AWS_RM_LOG="$secondary_rm_log" \
+R2_S3_ENDPOINT="https://fgws3.example.invalid" \
+AWS_ACCESS_KEY_ID="secondary" \
+AWS_SECRET_ACCESS_KEY="secondary" \
+AWS_DEFAULT_REGION="auto" \
+PRUNE_GRACE_DAYS=7 \
+  bash scripts/prune-mac-source.sh \
+    secondary-bucket \
+    latest/mac \
+    "$tmp_dir/keep/Codex-darwin-arm64-current.zip" \
+    "$tmp_dir/keep/Codex-darwin-x64-current.zip" \
+    "$tmp_dir/keep/appcast.xml" \
+    "$tmp_dir/keep/appcast-x64.xml"
+
+if ! grep -q 's3://secondary-bucket/latest/mac/arm64/old.zip' "$secondary_rm_log"; then
+  echo "expected old.zip to be pruned on the secondary mirror" >&2
+  cat "$secondary_rm_log" >&2
+  exit 1
+fi
+if grep -Eq 'current\.zip|recent\.zip|latest/mac/arm64/ ' "$secondary_rm_log"; then
+  echo "secondary prune removed a current, recent, or directory marker object" >&2
+  cat "$secondary_rm_log" >&2
+  exit 1
+fi
+# The secondary prune is delta-aware too (the appcasts are passed as keep args):
+# live deltas referenced by the feed must survive even though their timestamps
+# are outside the grace window, while an old unreferenced delta is still pruned.
+if grep -Eq 's3://secondary-bucket/.*Codex9999-live-(arm64|x64)\.delta' "$secondary_rm_log"; then
+  echo "secondary prune removed a live delta still referenced by the appcast" >&2
+  cat "$secondary_rm_log" >&2
+  exit 1
+fi
+if ! grep -q 's3://secondary-bucket/latest/mac/arm64/old-3000-arm64.delta' "$secondary_rm_log"; then
+  echo "expected old-3000-arm64.delta (old + unreferenced) to be pruned on the secondary mirror" >&2
+  cat "$secondary_rm_log" >&2
+  exit 1
+fi
+
 echo "prune-mac-source fixture test PASS"

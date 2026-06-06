@@ -420,6 +420,78 @@ jobs:
           secondary_readback latest/appcast-x64.xml /tmp/secondary-s3-appcast-x64.xml
           cmp appcast-x64.xml /tmp/secondary-s3-appcast-x64.xml
 
+      - name: Prune stale macOS Sparkle archives on secondary S3 mirror
+        env:
+          SECONDARY_S3_ENDPOINT: ${{ secrets.SECONDARY_S3_ENDPOINT }}
+          SECONDARY_S3_BUCKET: ${{ secrets.SECONDARY_S3_BUCKET }}
+          SECONDARY_S3_REGION: ${{ secrets.SECONDARY_S3_REGION }}
+          SECONDARY_S3_ACCESS_KEY_ID: ${{ secrets.SECONDARY_S3_ACCESS_KEY_ID }}
+          SECONDARY_S3_SECRET_ACCESS_KEY: ${{ secrets.SECONDARY_S3_SECRET_ACCESS_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Symmetric to the R2 prune above: keep the secondary IHEP mirror's
+          # latest/mac prefix bounded so old Sparkle archives do not accumulate
+          # forever on its limited storage. Skip cleanly when the mirror is not
+          # configured (same contract as the secondary sync step).
+          if [[ -z "${SECONDARY_S3_ENDPOINT:-}" && -z "${SECONDARY_S3_BUCKET:-}" && -z "${SECONDARY_S3_ACCESS_KEY_ID:-}" && -z "${SECONDARY_S3_SECRET_ACCESS_KEY:-}" ]]; then
+            echo "Secondary S3 mirror is not configured; skipping prune."
+            exit 0
+          fi
+          if [[ -z "${SECONDARY_S3_ENDPOINT:-}" || -z "${SECONDARY_S3_BUCKET:-}" || -z "${SECONDARY_S3_ACCESS_KEY_ID:-}" || -z "${SECONDARY_S3_SECRET_ACCESS_KEY:-}" ]]; then
+            echo "Secondary S3 mirror is partially configured; set endpoint, bucket, access key, and secret key." >&2
+            exit 1
+          fi
+
+          # Recompute the current Sparkle archive basenames from the manifest so
+          # the keep list matches the enclosure URLs build-appcast.sh emitted and
+          # the secondary sync uploaded (latest/mac/{arm64,intel}/...).
+          arm_short_version="$(jq -r '.sources.macos.arm64.appcast.shortVersionString' release-manifest.json)"
+          x64_short_version="$(jq -r '.sources.macos.x64.appcast.shortVersionString' release-manifest.json)"
+          mac_arm64_zip="artifacts/codex-macos/Codex-darwin-arm64-${arm_short_version}.zip"
+          mac_intel_zip="artifacts/codex-macos/Codex-darwin-x64-${x64_short_version}.zip"
+          test -f "$mac_arm64_zip"
+          test -f "$mac_intel_zip"
+
+          # The secondary mirror (IHEP S3) needs path-style addressing, the same
+          # way the secondary sync/readback do. Point the AWS CLI at a config that
+          # forces it so list/delete resolve against the custom endpoint host.
+          secondary_region="${SECONDARY_S3_REGION:-auto}"
+          tmp_config="$(mktemp)"
+          cleanup() {
+            rm -f "$tmp_config"
+          }
+          trap cleanup EXIT
+          cat > "$tmp_config" <<EOF
+          [default]
+          region = $secondary_region
+          s3 =
+              addressing_style = path
+          EOF
+
+          # prune-mac-source.sh speaks the R2/AWS env-var vocabulary, so map the
+          # secondary mirror's credentials and endpoint onto it. The keep list is
+          # the current arm64/x64 zip basenames PLUS the freshly built appcasts, so
+          # the script protects the current full .zip AND every live <sparkle:deltas>
+          # .delta they reference -- identical to the R2 prune above. Without the
+          # appcasts, live deltas on this limited IHEP mirror would be deleted after
+          # the grace window while R2 kept them. The prefix matches the secondary
+          # layout (SECONDARY_S3_PREFIX defaults to "latest").
+          secondary_prefix="${SECONDARY_S3_PREFIX:-latest}"
+          R2_S3_ENDPOINT="$SECONDARY_S3_ENDPOINT" \
+          AWS_ACCESS_KEY_ID="$SECONDARY_S3_ACCESS_KEY_ID" \
+          AWS_SECRET_ACCESS_KEY="$SECONDARY_S3_SECRET_ACCESS_KEY" \
+          AWS_DEFAULT_REGION="$secondary_region" \
+          AWS_EC2_METADATA_DISABLED=true \
+          AWS_CONFIG_FILE="$tmp_config" \
+            bash scripts/prune-mac-source.sh \
+              "$SECONDARY_S3_BUCKET" \
+              "$secondary_prefix/mac" \
+              "$mac_arm64_zip" \
+              "$mac_intel_zip" \
+              appcast.xml \
+              appcast-x64.xml
+
   no_changes:
     name: No new version
     runs-on: ubuntu-latest
