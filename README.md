@@ -324,6 +324,17 @@ The Windows MSIX is resolved from Microsoft Store metadata (DisplayCatalog → F
 - **[LINUX DO](https://linux.do/)** community — the home for feedback on download availability, install results, and checksums.
 - **Institute of High Energy Physics, Chinese Academy of Sciences (IHEP)** — provides the S3 mirror storage that keeps downloads and updates fast and reachable inside mainland China.
 
+## Star History
+
+<p align="center">
+  <a href="https://star-history.com/#Wangnov/codex-app-mirror&Date">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Wangnov/codex-app-mirror&type=Date&theme=dark" />
+      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Wangnov/codex-app-mirror&type=Date" width="75%" />
+    </picture>
+  </a>
+</p>
+
 ## License
 
 [MIT](./LICENSE). Not affiliated with or endorsed by OpenAI or Microsoft.
