@@ -31,12 +31,21 @@
 
 ---
 
-<!-- ⬇ 赞助商 SPONSOR（最顶部，中英双语共享；待补：DuckCoding logo 图 + 专属注册链接/优惠码） -->
-<p align="center">
-  🦆 &nbsp;<b>本项目由 <a href="https://duckcoding.ai">DuckCoding</a> 赞助支持</b><br>
-  国内可直连的 Claude Code / Codex / Gemini CLI API 中转 · 人民币充值 · 按量计费<br>
-  <sub><b>Sponsored by <a href="https://duckcoding.ai">DuckCoding</a></b> — China-friendly API relay for Claude Code / Codex / Gemini CLI · CNY top-up · pay-as-you-go</sub>
-</p>
+<!-- ⬇ 赞助商 SPONSOR（最顶部，中英双语共享；专属注册链接/优惠码待补，现用主站占位） -->
+<div align="center">
+<table>
+  <tr>
+    <td align="center" width="170">
+      <a href="https://duckcoding.ai"><img src="./assets/sponsor-duckcoding.png" alt="DuckCoding" width="108"></a>
+    </td>
+    <td width="560">
+      <b>本项目由 <a href="https://duckcoding.ai">DuckCoding</a> 赞助支持</b><br>
+      面向国内开发者的 Claude Code / Codex / Gemini CLI API 中转：人民币充值、按量计费，免去外币卡与网络直连的麻烦。<br>
+      <sub><b>Sponsored by <a href="https://duckcoding.ai">DuckCoding</a></b> — a China-friendly API relay for Claude Code / Codex / Gemini CLI: top up in CNY, pay as you go, no overseas card or VPN needed.</sub>
+    </td>
+  </tr>
+</table>
+</div>
 
 ---
 
