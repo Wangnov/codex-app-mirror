@@ -53,9 +53,7 @@
 
 # 中文
 
-在 Windows 上装 Codex 桌面应用，本该是 Microsoft Store 一键的事。但现实里这条链路经常不配合：商店被精简、AppX 服务被关闭、账号策略拦截下载，或者 CI 里 `winget download` 因为 Store 包需要 Entra ID 认证而无法无人值守运行。macOS 这边，官方 DMG 在国内网络下也时快时断。
-
-**`codex-app-mirror` 把这件事做窄、做稳、做到国内可达。** 它**不构建、不修改、不重打包** Codex——只把当前官方来源的安装包按版本探测结果原样镜像到 GitHub Release，再通过自动分流的 CDN 短链分发。如今它还为 macOS 提供 **Sparkle 增量自动更新源**，被下游的 [Codex App Manager](#cn-ecosystem) 客户端直接消费。所以它既是一次性下载的入口，也是持续更新的基础设施。
+`codex-app-mirror` 是面向 OpenAI Codex 桌面应用的安装包镜像与分发项目，用于在 Microsoft Store 或官方下载不便时提供稳定且可校验的获取渠道。项目仅做镜像，不构建、不修改、不重打包 Codex：按版本探测结果将官方来源的 Windows MSIX 与 macOS DMG 原样发布到 GitHub Release，并经 CDN 短链分发。macOS 端另提供 Sparkle 增量更新 appcast，由下游 [Codex App Manager](#cn-ecosystem) 客户端消费。
 
 ## 能力一览
 
@@ -206,9 +204,7 @@ Windows MSIX 使用 Microsoft Store metadata 解析：
 
 # English
 
-Installing the Codex desktop app on Windows should be one click in the Microsoft Store. In practice that path often breaks: the Store is trimmed, AppX services are disabled, account policy blocks the download, or an unattended CI runner can't use `winget download` because Store packaged apps require Entra ID authentication. On macOS, the official DMG can be slow or flaky from some networks.
-
-**`codex-app-mirror` keeps the job narrow, stable, and reachable.** It does **not** build, modify, or repackage Codex — it mirrors the current official installer packages byte-for-byte into GitHub Releases when upstream fingerprints change, and serves them over geo-routed CDN short links. It also publishes a **Sparkle incremental auto-update feed** for macOS, consumed directly by the downstream [Codex App Manager](#en-ecosystem) client. So it is both a one-time download entry point and ongoing update infrastructure.
+`codex-app-mirror` is an installer mirror and distribution project for the OpenAI Codex desktop app, providing a stable, verifiable way to obtain it when the Microsoft Store or official downloads are inconvenient. The project only mirrors — it does not build, modify, or repackage Codex: it publishes the official Windows MSIX and macOS DMG verbatim to GitHub Releases based on version probing, and serves them over CDN short links. For macOS it also provides a Sparkle incremental-update appcast, consumed by the downstream [Codex App Manager](#en-ecosystem) client.
 
 ## At a glance
 
