@@ -36,7 +36,7 @@
 <table>
   <tr>
     <td align="center" width="170">
-      <a href="https://duckcoding.ai"><img src="./assets/sponsor-duckcoding.png" alt="DuckCoding" width="108"></a>
+      <a href="https://duckcoding.ai"><img src="./assets/sponsor-duckcoding.jpg" alt="DuckCoding" width="108"></a>
     </td>
     <td width="560">
       <b>本项目由 <a href="https://duckcoding.ai">DuckCoding</a> 赞助支持</b><br>
