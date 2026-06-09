@@ -11,6 +11,7 @@
     "enabled": true,
     "head_sampling_rate": 1
   },
+  // The scheduled Worker dispatches mirror.yml for codex-app-mirror and agents-cli-mirror.
   "vars": {
     "GITHUB_OWNER": "Wangnov",
     "GITHUB_REPO": "codex-app-mirror",

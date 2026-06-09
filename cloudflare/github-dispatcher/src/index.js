@@ -5,20 +5,79 @@ export default {
   async scheduled(controller, env) {
     const result = await dispatchWorkflow(controller, env);
     console.log(JSON.stringify(result));
+    return result;
   },
 };
 
 async function dispatchWorkflow(controller, env) {
+  if (!env.GITHUB_TOKEN) {
+    throw new Error("GITHUB_TOKEN secret is not configured.");
+  }
+
   const owner = env.GITHUB_OWNER || "Wangnov";
   const repo = env.GITHUB_REPO || "codex-app-mirror";
   const workflow = env.GITHUB_WORKFLOW || "mirror.yml";
   const ref = env.GITHUB_REF || "main";
   const forceRelease = env.GITHUB_FORCE_RELEASE || "false";
 
-  if (!env.GITHUB_TOKEN) {
-    throw new Error("GITHUB_TOKEN secret is not configured.");
+  const targets = [
+    { owner, repo, workflow, ref },
+    {
+      owner: "Wangnov",
+      repo: "agents-cli-mirror",
+      workflow: "mirror.yml",
+      ref: "main",
+    },
+  ];
+
+  const settled = await Promise.allSettled(
+    targets.map((target) => dispatchWorkflowTarget(controller, env, target, forceRelease)),
+  );
+
+  const results = settled.map((entry, index) => {
+    if (entry.status === "fulfilled") {
+      return entry.value;
+    }
+
+    return (
+      entry.reason.result || {
+        event: "github_workflow_dispatch",
+        cron: controller.cron,
+        ...targets[index],
+        force_release: forceRelease,
+        ok: false,
+        error: entry.reason.message,
+        at: new Date().toISOString(),
+      }
+    );
+  });
+
+  const succeeded = results.filter((result) => result.ok).length;
+  const failed = results.length - succeeded;
+  const result = {
+    event: "github_workflow_dispatch_batch",
+    cron: controller.cron,
+    ok: succeeded > 0,
+    succeeded,
+    failed,
+    targets: results,
+    at: new Date().toISOString(),
+  };
+
+  if (!result.ok) {
+    console.error(JSON.stringify(result));
+    throw new Error("All GitHub workflow dispatches failed.");
   }
 
+  if (failed > 0) {
+    console.error(JSON.stringify(result));
+  }
+
+  return result;
+}
+
+async function dispatchWorkflowTarget(controller, env, target, forceRelease) {
+  const { owner, repo, workflow, ref } = target;
   const url = new URL(
     `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/actions/workflows/${encodeURIComponent(workflow)}/dispatches`,
   );
@@ -56,8 +115,11 @@ async function dispatchWorkflow(controller, env) {
   if (!response.ok) {
     result.body = await response.text();
     console.error(JSON.stringify(result));
-    throw new Error(`GitHub workflow dispatch failed with HTTP ${response.status}.`);
+    const error = new Error(`GitHub workflow dispatch failed with HTTP ${response.status}.`);
+    error.result = result;
+    throw error;
   }
 
+  console.log(JSON.stringify(result));
   return result;
 }
