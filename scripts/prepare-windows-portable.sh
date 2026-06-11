@@ -44,8 +44,12 @@ cp -R "$tmp_dir/app/." "$package_dir/"
 cat > "$package_dir/Run-Codex.cmd" <<'EOF'
 @echo off
 setlocal
-set "CODEX_DIR=%~dp0"
-start "" "%CODEX_DIR%Codex.exe" %*
+set "CODEX_EXE=%~dp0Codex.exe"
+if not exist "%CODEX_EXE%" (
+  echo Codex.exe was not found next to this script.
+  exit /b 1
+)
+start "" "%CODEX_EXE%" %*
 EOF
 
 cat > "$package_dir/Install-Current-User.cmd" <<'EOF'
@@ -57,13 +61,14 @@ set "SHORTCUT_DIR=%APPDATA%\Microsoft\Windows\Start Menu\Programs"
 set "SHORTCUT=%SHORTCUT_DIR%\Codex.lnk"
 
 if not exist "%TARGET_DIR%" mkdir "%TARGET_DIR%"
+if not exist "%SHORTCUT_DIR%" mkdir "%SHORTCUT_DIR%"
 robocopy "%SOURCE_DIR%" "%TARGET_DIR%" /MIR /XF "Install-Current-User.cmd" >nul
 if errorlevel 8 (
   echo Copy failed.
   exit /b 1
 )
 
-powershell -NoProfile -Command "$w=New-Object -ComObject WScript.Shell; $s=$w.CreateShortcut('%SHORTCUT%'); $s.TargetPath='%TARGET_DIR%\Codex.exe'; $s.WorkingDirectory='%TARGET_DIR%'; $s.IconLocation='%TARGET_DIR%\resources\icon.ico'; $s.Save()"
+powershell -NoProfile -Command "$w=New-Object -ComObject WScript.Shell; $s=$w.CreateShortcut($env:SHORTCUT); $s.TargetPath=(Join-Path $env:TARGET_DIR 'Codex.exe'); $s.WorkingDirectory=$env:TARGET_DIR; $s.IconLocation=(Join-Path $env:TARGET_DIR 'resources\icon.ico'); $s.Save()"
 
 echo Codex was installed for the current user:
 echo %TARGET_DIR%
