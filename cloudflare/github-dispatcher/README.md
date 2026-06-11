@@ -1,8 +1,9 @@
 # codex-app-mirror Cloudflare dispatcher
 
 This Worker uses Cloudflare Cron Triggers as the primary 15-minute scheduler for
-`codex-app-mirror`. It does not mirror files itself. It only calls the GitHub
-Actions `workflow_dispatch` API for `.github/workflows/mirror.yml`.
+`codex-app-mirror` and `agents-cli-mirror`. It does not mirror files itself. It
+only calls the GitHub Actions `workflow_dispatch` API for the configured mirror
+workflows.
 
 GitHub Actions `schedule` remains in the repository as a low-frequency fallback.
 
@@ -16,7 +17,7 @@ GitHub Actions release pipeline unchanged.
 
 Create a fine-grained personal access token:
 
-- Repository access: `Wangnov/codex-app-mirror` only
+- Repository access: `Wangnov/codex-app-mirror` and `Wangnov/agents-cli-mirror`
 - Repository permissions: `Actions` -> `Read and write`
 - Expiration: 90 or 180 days recommended
 

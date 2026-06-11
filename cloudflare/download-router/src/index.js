@@ -5,7 +5,7 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    if (!url.pathname.startsWith("/latest/")) {
+    if (!isAllowedLatestPath(url.pathname)) {
       return new Response("Not found", { status: 404 });
     }
 
@@ -18,34 +18,64 @@ export default {
     );
 
     if (secondaryCountryCodes.has(country.toUpperCase()) && hasSecondaryS3Config(env)) {
-      const objectKey = objectKeyForPath(url.pathname, env.SECONDARY_S3_PREFIX || "");
-      const downloadMetadata = downloadMetadataForPath(url.pathname);
-      const signedUrl = await presignS3GetUrl({
-        endpoint: env.SECONDARY_S3_ENDPOINT,
-        bucket: env.SECONDARY_S3_BUCKET,
-        key: objectKey,
-        region: env.SECONDARY_S3_REGION || "auto",
-        accessKeyId: env.SECONDARY_S3_ACCESS_KEY_ID,
-        secretAccessKey: env.SECONDARY_S3_SECRET_ACCESS_KEY,
-        expiresInSeconds: ttlSeconds(env.SECONDARY_S3_SIGNED_URL_TTL_SECONDS),
-        responseHeaders: downloadMetadata
-          ? {
-              "response-content-disposition": `attachment; filename="${downloadMetadata.filename}"`,
-              "response-content-type": downloadMetadata.contentType,
-            }
-          : {},
-      });
+      try {
+        const objectKey = objectKeyForPath(url.pathname, env.SECONDARY_S3_PREFIX || "");
+        const downloadMetadata = downloadMetadataForPath(url.pathname);
+        const signedUrl = await presignS3GetUrl({
+          endpoint: env.SECONDARY_S3_ENDPOINT,
+          bucket: env.SECONDARY_S3_BUCKET,
+          key: objectKey,
+          region: env.SECONDARY_S3_REGION || "auto",
+          accessKeyId: env.SECONDARY_S3_ACCESS_KEY_ID,
+          secretAccessKey: env.SECONDARY_S3_SECRET_ACCESS_KEY,
+          expiresInSeconds: ttlSeconds(env.SECONDARY_S3_SIGNED_URL_TTL_SECONDS),
+          responseHeaders: downloadMetadata
+            ? {
+                "response-content-disposition": `attachment; filename="${downloadMetadata.filename}"`,
+                "response-content-type": downloadMetadata.contentType,
+              }
+            : {},
+        });
 
-      return redirect(signedUrl);
+        return redirect(signedUrl);
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            event: "secondary_s3_presign_failed",
+            path: url.pathname,
+            country,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      }
     }
 
     if (!env.GLOBAL_MIRROR_BASE_URL) {
       return new Response("Missing GLOBAL_MIRROR_BASE_URL", { status: 500 });
     }
 
-    return redirect(withPathAndSearch(env.GLOBAL_MIRROR_BASE_URL, url.pathname, url.search).toString());
+    return redirect(withPathAndSearch(env.GLOBAL_MIRROR_BASE_URL, url.pathname, url.search).toString(), {
+      "X-Mirror-Fallback": "global",
+    });
   },
 };
+
+function isAllowedLatestPath(pathname) {
+  const aliases = new Set([
+    "/latest/win",
+    "/latest/mac-arm64",
+    "/latest/mac-intel",
+    "/latest/checksums",
+    "/latest/manifest",
+    "/latest/appcast.xml",
+    "/latest/appcast-x64.xml",
+  ]);
+  if (aliases.has(pathname)) {
+    return true;
+  }
+
+  return /^\/latest\/mac\/(arm64|intel)\/[^/]+\.(zip|delta)$/.test(pathname);
+}
 
 function hasSecondaryS3Config(env) {
   return Boolean(
@@ -64,12 +94,13 @@ function ttlSeconds(value) {
   return Math.min(Math.max(parsed, 1), 604800);
 }
 
-function redirect(location) {
+function redirect(location, extraHeaders = {}) {
   return new Response(null, {
     status: 302,
     headers: {
       Location: location,
       "Cache-Control": "private, no-store",
+      ...extraHeaders,
     },
   });
 }
@@ -96,7 +127,7 @@ function downloadMetadataForPath(pathname) {
       contentType: "application/x-apple-diskimage",
     },
     "mac-intel": {
-      filename: "Codex-mac-intel.dmg",
+      filename: "Codex-mac-x64.dmg",
       contentType: "application/x-apple-diskimage",
     },
     win: {

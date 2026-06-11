@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "wrangler dev --test-scheduled",
     "deploy": "wrangler deploy",
-    "check": "wrangler check"
+    "check": "node --check src/index.js && wrangler deploy --dry-run"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
