@@ -81,15 +81,34 @@ def graphql_per_day(account: str, bucket: str, objects: set[str],
     filter by the `date` dimension in the caller, so passing today's 00:00 as
     `end` keeps the (still-changing) current day out of the totals.
     """
+    per_day: dict[str, int] = {}
+    for object_name in sorted(objects):
+        for day, requests in graphql_per_day_for_object(
+            account, bucket, object_name, start, end, token
+        ).items():
+            per_day[day] = per_day.get(day, 0) + requests
+    return per_day
+
+
+def graphql_per_day_for_object(account: str, bucket: str, object_name: str,
+                               start: str, end: str, token: str) -> dict[str, int]:
+    """Return per-day GetObject counts for one exact R2 object key."""
     query = (
-        "query($account:String!,$bucket:String!,$from:Time!,$to:Time!){"
+        "query($account:String!,$bucket:String!,$objectName:String!,"
+        "$from:Time!,$to:Time!){"
         "viewer{accounts(filter:{accountTag:$account}){"
         "r2OperationsAdaptiveGroups(limit:10000,orderBy:[date_ASC],"
         "filter:{datetime_geq:$from,datetime_leq:$to,bucketName:$bucket,"
-        'actionType:"GetObject"}){'
+        'actionType:"GetObject",objectName:$objectName}){'
         "sum{requests} dimensions{date objectName}}}}}"
     )
-    variables = {"account": account, "bucket": bucket, "from": start, "to": end}
+    variables = {
+        "account": account,
+        "bucket": bucket,
+        "objectName": object_name,
+        "from": start,
+        "to": end,
+    }
     payload = json.dumps({"query": query, "variables": variables}).encode()
 
     last_err = None
@@ -109,11 +128,19 @@ def graphql_per_day(account: str, bucket: str, objects: set[str],
                 raise RuntimeError(f"GraphQL errors: {body['errors']}")
             groups = (body["data"]["viewer"]["accounts"][0]
                       ["r2OperationsAdaptiveGroups"])
+            if len(groups) >= 10000:
+                raise RuntimeError(
+                    f"GraphQL result hit the 10000-row limit for {object_name}"
+                )
             per_day: dict[str, int] = {}
             for g in groups:
-                if g["dimensions"]["objectName"] in objects:
-                    d = g["dimensions"]["date"]
-                    per_day[d] = per_day.get(d, 0) + int(g["sum"]["requests"])
+                if g["dimensions"]["objectName"] != object_name:
+                    raise RuntimeError(
+                        "GraphQL objectName filter returned unexpected object "
+                        f"{g['dimensions']['objectName']!r} for {object_name!r}"
+                    )
+                d = g["dimensions"]["date"]
+                per_day[d] = per_day.get(d, 0) + int(g["sum"]["requests"])
             return per_day
         except (urllib.error.URLError, RuntimeError, KeyError, ValueError) as e:
             last_err = e
@@ -126,16 +153,36 @@ def s3_args(endpoint: str) -> list[str]:
     return ["--endpoint-url", endpoint, "--region", "auto", "--no-progress"]
 
 
-def s3_read(bucket: str, key: str, endpoint: str) -> bytes | None:
+def is_missing_s3_object(stderr: bytes) -> bool:
+    text = stderr.decode("utf-8", "replace").lower()
+    missing_markers = (
+        "404",
+        "not found",
+        "no such key",
+        "nosuchkey",
+        "does not exist",
+    )
+    return any(marker in text for marker in missing_markers)
+
+
+def s3_read(bucket: str, key: str, endpoint: str, allow_missing_aws: bool = False) -> bytes | None:
     try:
         p = subprocess.run(
             ["aws", "s3", "cp", f"s3://{bucket}/{key}", "-", *s3_args(endpoint)],
             capture_output=True,
         )
     except FileNotFoundError:
-        return None  # aws CLI not installed (e.g. local dry run)
+        if allow_missing_aws:
+            return None
+        raise SystemExit("error: aws CLI is required to read stats state")
     if p.returncode != 0:
-        return None  # object missing / no credentials -> treat as cold start
+        if is_missing_s3_object(p.stderr):
+            return None
+        stderr = p.stderr.decode("utf-8", "replace").strip()
+        raise SystemExit(
+            f"error: failed to read s3://{bucket}/{key}; refusing to cold-start "
+            f"from an ambiguous AWS CLI failure: {stderr}"
+        )
     return p.stdout
 
 
@@ -186,7 +233,7 @@ def main() -> int:
           f"dry_run={dry_run}")
     print(f"   counting objects: {sorted(objects)}")
 
-    raw = s3_read(bucket, state_key, endpoint)
+    raw = s3_read(bucket, state_key, endpoint, allow_missing_aws=dry_run)
     state = json.loads(raw) if raw else None
 
     if state is None:
