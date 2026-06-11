@@ -83,4 +83,15 @@ JSON
     echo "SHA256SUMS.txt should use basenames, not CI artifact paths." >&2
     exit 1
   fi
+
+  if "$repo_root/scripts/prepare-release-metadata.sh" \
+    probe-manifest.json \
+    macos-metadata.json \
+    artifacts \
+    https://example.com \
+    $'bad-tag\nrelease_tag=evil' > "$tmp_dir/invalid-tag-output.txt" 2>&1; then
+    echo "prepare-release-metadata.sh should reject multiline release tags." >&2
+    exit 1
+  fi
+  grep -F 'Invalid release tag' "$tmp_dir/invalid-tag-output.txt"
 )

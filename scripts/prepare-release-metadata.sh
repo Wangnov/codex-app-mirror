@@ -22,6 +22,23 @@ sanitize_tag_part() {
   tr -cs 'A-Za-z0-9._-' '-' <<<"$1" | sed -E 's/^-+//; s/-+$//'
 }
 
+validate_release_tag() {
+  local tag="$1"
+
+  if [[ ! "$tag" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]]; then
+    echo "Invalid release tag '$tag'. Use 1-128 ASCII letters, numbers, dots, underscores, or hyphens; the first character must be alphanumeric." >&2
+    exit 1
+  fi
+}
+
+github_output_value() {
+  local name="$1"
+  local value="$2"
+  local delimiter="__codex_output_${name}_$$_$(date +%s%N)__"
+
+  printf '%s<<%s\n%s\n%s\n' "$name" "$delimiter" "$value" "$delimiter"
+}
+
 require find
 require jq
 require sha256sum
@@ -95,6 +112,8 @@ else
   fi
   tag="codex-app-win-${windows_tag}-${mac_tag}"
 fi
+
+validate_release_tag "$tag"
 
 windows_major_minor="$(major_minor "$windows_version")"
 mac_major_minor="$(major_minor "${mac_common_version:-$mac_arm_version}")"
@@ -246,8 +265,8 @@ mac_x64_etag="$(jq -r '.sources.macos.x64.etag // empty' release-manifest.json)"
 
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   {
-    echo "tag=$tag"
-    echo "title=$title"
+    github_output_value "tag" "$tag"
+    github_output_value "title" "$title"
   } >> "$GITHUB_OUTPUT"
 fi
 

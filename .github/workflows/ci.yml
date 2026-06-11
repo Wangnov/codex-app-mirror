@@ -51,6 +51,10 @@ jobs:
         shell: bash
         run: scripts/test-prepare-release-metadata.sh
 
+      - name: Test release probe fixture
+        shell: bash
+        run: scripts/test-probe-release.sh
+
       - name: Test appcast generation fixture
         shell: bash
         run: scripts/test-build-appcast.sh

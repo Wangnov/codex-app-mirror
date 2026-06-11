@@ -6,6 +6,7 @@ architecture="x64"
 arm_appcast_url="https://persistent.oaistatic.com/codex-app-prod/appcast.xml"
 x64_appcast_url="https://persistent.oaistatic.com/codex-app-prod/appcast-x64.xml"
 windows_update_manifest_url="https://persistent.oaistatic.com/codex-app-prod/windows-store-update.json"
+r2_public_base_url="${R2_PUBLIC_BASE_URL:-https://codexapp.agentsmirror.com}"
 force_release="${FORCE_RELEASE:-false}"
 release_tag_input="${RELEASE_TAG:-}"
 manifest_path="${MANIFEST_PATH:-release-manifest.json}"
@@ -45,6 +46,27 @@ curl_head() {
   curl -fsSI -L "${curl_retry_args[@]}" "$url"
 }
 
+curl_range_headers() {
+  local label="$1"
+  local url="$2"
+  local headers_file
+
+  headers_file="$(mktemp)"
+  echo "Fetching $label range headers: $(redact_url "$url")" >&2
+  if curl -fsSL -L "${curl_retry_args[@]}" \
+    --range 0-0 \
+    -D "$headers_file" \
+    -o /dev/null \
+    "$url"; then
+    cat "$headers_file"
+    rm -f "$headers_file"
+    return 0
+  fi
+
+  rm -f "$headers_file"
+  return 1
+}
+
 header_value() {
   local headers="$1"
   local name="$2"
@@ -71,6 +93,26 @@ json_number() {
   else
     printf '0'
   fi
+}
+
+object_size_from_range_headers() {
+  local headers="$1"
+  local content_range
+  local content_length
+
+  content_range="$(header_value "$headers" "content-range")"
+  if [[ "$content_range" =~ /([0-9]+)$ ]]; then
+    printf '%s' "${BASH_REMATCH[1]}"
+    return 0
+  fi
+
+  content_length="$(header_value "$headers" "content-length")"
+  if [[ "$content_length" =~ ^[0-9]+$ ]]; then
+    printf '%s' "$content_length"
+    return 0
+  fi
+
+  return 1
 }
 
 version_gt() {
@@ -268,6 +310,15 @@ sanitize_tag_part() {
   tr -cs 'A-Za-z0-9._-' '-' <<<"$1" | sed -E 's/^-+//; s/-+$//'
 }
 
+validate_release_tag() {
+  local tag="$1"
+
+  if [[ ! "$tag" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]]; then
+    echo "Invalid release tag '$tag'. Use 1-128 ASCII letters, numbers, dots, underscores, or hyphens; the first character must be alphanumeric." >&2
+    exit 1
+  fi
+}
+
 predicted_release_tag() {
   local windows_version="$1"
   local arm_version="$2"
@@ -309,15 +360,13 @@ manifest_key() {
     },
     macos: {
       arm64: {
-        appcastVersion: .sources.macos.arm64.appcast.shortVersionString,
-        appcastBuild: .sources.macos.arm64.appcast.version,
+        appcast: .sources.macos.arm64.appcast,
         contentLength: .sources.macos.arm64.contentLength,
         etag: .sources.macos.arm64.etag,
         lastModified: .sources.macos.arm64.lastModified
       },
       x64: {
-        appcastVersion: .sources.macos.x64.appcast.shortVersionString,
-        appcastBuild: .sources.macos.x64.appcast.version,
+        appcast: .sources.macos.x64.appcast,
         contentLength: .sources.macos.x64.contentLength,
         etag: .sources.macos.x64.etag,
         lastModified: .sources.macos.x64.lastModified
@@ -325,6 +374,193 @@ manifest_key() {
     }
   }' "$1"
 }
+
+public_mirror_manifest_key_matches() {
+  local manifest="$1"
+  local live_manifest
+  local current_key
+  local live_key
+
+  live_manifest="$(mktemp)"
+  if ! curl_get "public mirror manifest" "$r2_public_base_url/latest/manifest?probe=$$" > "$live_manifest"; then
+    rm -f "$live_manifest"
+    return 1
+  fi
+
+  if ! current_key="$(manifest_key "$manifest")" || ! live_key="$(manifest_key "$live_manifest")"; then
+    rm -f "$live_manifest"
+    return 1
+  fi
+
+  rm -f "$live_manifest"
+  [[ "$current_key" == "$live_key" ]]
+}
+
+public_mirror_appcasts_match() {
+  local manifest="$1"
+  local dir
+
+  dir="$(mktemp -d)"
+  if ! bash scripts/build-appcast.sh arm64 "$manifest" "$r2_public_base_url" "$dir/appcast.xml" >/dev/null; then
+    rm -rf "$dir"
+    return 1
+  fi
+  if ! bash scripts/build-appcast.sh x64 "$manifest" "$r2_public_base_url" "$dir/appcast-x64.xml" >/dev/null; then
+    rm -rf "$dir"
+    return 1
+  fi
+
+  if ! curl_get "public mirror arm64 appcast" "$r2_public_base_url/latest/appcast.xml?probe=$$" > "$dir/live-appcast.xml"; then
+    rm -rf "$dir"
+    return 1
+  fi
+  if ! curl_get "public mirror x64 appcast" "$r2_public_base_url/latest/appcast-x64.xml?probe=$$" > "$dir/live-appcast-x64.xml"; then
+    rm -rf "$dir"
+    return 1
+  fi
+
+  if cmp -s "$dir/appcast.xml" "$dir/live-appcast.xml" &&
+     cmp -s "$dir/appcast-x64.xml" "$dir/live-appcast-x64.xml"; then
+    rm -rf "$dir"
+    return 0
+  fi
+
+  rm -rf "$dir"
+  return 1
+}
+
+public_mirror_object_exists() {
+  local label="$1"
+  local object_path="$2"
+
+  curl_range_headers "$label" "$r2_public_base_url/$object_path?probe=$$" >/dev/null
+}
+
+public_mirror_object_size_matches() {
+  local label="$1"
+  local object_path="$2"
+  local expected_size="$3"
+  local headers
+  local actual_size
+
+  if [[ ! "$expected_size" =~ ^[1-9][0-9]*$ ]]; then
+    public_mirror_object_exists "$label" "$object_path"
+    return
+  fi
+
+  if ! headers="$(curl_range_headers "$label" "$r2_public_base_url/$object_path?probe=$$")"; then
+    return 1
+  fi
+  if ! actual_size="$(object_size_from_range_headers "$headers")"; then
+    return 1
+  fi
+
+  [[ "$actual_size" == "$expected_size" ]]
+}
+
+public_mirror_checksums_match() {
+  local tag="$1"
+  local dir
+
+  [[ -n "$tag" ]] || return 1
+
+  dir="$(mktemp -d)"
+  if ! download_release_asset "$tag" SHA256SUMS.txt "$dir" >/dev/null 2>&1; then
+    rm -rf "$dir"
+    return 1
+  fi
+
+  if ! curl_get "public mirror checksums" "$r2_public_base_url/latest/checksums?probe=$$" > "$dir/live-SHA256SUMS.txt"; then
+    rm -rf "$dir"
+    return 1
+  fi
+
+  if cmp -s "$dir/SHA256SUMS.txt" "$dir/live-SHA256SUMS.txt"; then
+    rm -rf "$dir"
+    return 0
+  fi
+
+  rm -rf "$dir"
+  return 1
+}
+
+public_mirror_delta_objects_match() {
+  local manifest="$1"
+  local arch_key="$2"
+  local mirror_dir="$3"
+  local basename
+  local expected_size
+
+  while IFS=$'\t' read -r basename expected_size; do
+    [[ -n "$basename" ]] || return 1
+    public_mirror_object_size_matches \
+      "public mirror macOS $arch_key delta $basename" \
+      "latest/mac/$mirror_dir/$basename" \
+      "$expected_size" || return 1
+  done < <(
+    jq -r --arg a "$arch_key" '
+      .sources.macos[$a].appcast.deltas[]?
+      | [(.basename // ((.url // "") | split("/")[-1]) // ""), (.length // 0)]
+      | @tsv
+    ' "$manifest"
+  )
+}
+
+public_mirror_objects_match() {
+  local manifest="$1"
+  local arm_short_version
+  local x64_short_version
+
+  arm_short_version="$(jq -r '.sources.macos.arm64.appcast.shortVersionString // ""' "$manifest")"
+  x64_short_version="$(jq -r '.sources.macos.x64.appcast.shortVersionString // ""' "$manifest")"
+
+  [[ -n "$arm_short_version" && -n "$x64_short_version" ]] || return 1
+
+  public_mirror_object_size_matches \
+    "public mirror Windows alias" \
+    "latest/win" \
+    "$(jq -r '.sources.windows.contentLength // 0' "$manifest")" &&
+  public_mirror_object_size_matches \
+    "public mirror macOS arm64 DMG alias" \
+    "latest/mac-arm64" \
+    "$(jq -r '.sources.macos.arm64.contentLength // 0' "$manifest")" &&
+  public_mirror_object_size_matches \
+    "public mirror macOS x64 DMG alias" \
+    "latest/mac-intel" \
+    "$(jq -r '.sources.macos.x64.contentLength // 0' "$manifest")" &&
+  public_mirror_object_size_matches \
+    "public mirror macOS arm64 Sparkle archive" \
+    "latest/mac/arm64/Codex-darwin-arm64-${arm_short_version}.zip" \
+    "$(jq -r '.sources.macos.arm64.appcast.enclosureLength // 0' "$manifest")" &&
+  public_mirror_object_size_matches \
+    "public mirror macOS x64 Sparkle archive" \
+    "latest/mac/intel/Codex-darwin-x64-${x64_short_version}.zip" \
+    "$(jq -r '.sources.macos.x64.appcast.enclosureLength // 0' "$manifest")" &&
+  public_mirror_delta_objects_match "$manifest" arm64 arm64 &&
+  public_mirror_delta_objects_match "$manifest" x64 intel
+}
+
+public_mirror_latest_matches() {
+  local manifest="$1"
+  local tag="$2"
+
+  public_mirror_manifest_key_matches "$manifest" &&
+    public_mirror_appcasts_match "$manifest" &&
+    public_mirror_checksums_match "$tag" &&
+    public_mirror_objects_match "$manifest"
+}
+
+github_output_value() {
+  local name="$1"
+  local value="$2"
+  local delimiter="__codex_output_${name}_$$_$(date +%s%N)__"
+
+  printf '%s<<%s\n%s\n%s\n' "$name" "$delimiter" "$value" "$delimiter"
+}
+
+if [[ -n "$release_tag_input" ]]; then
+  validate_release_tag "$release_tag_input"
+fi
 
 require curl
 require dotnet
@@ -468,6 +704,7 @@ jq -n \
 should_release="true"
 skip_reason=""
 latest_tag=""
+release_tag_fallback=""
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
@@ -488,12 +725,17 @@ else
       current_key="$(manifest_key "$manifest_path")"
       previous_key="$(manifest_key "$tmp_dir/release-manifest.json")"
       if [[ "$current_key" == "$previous_key" ]]; then
-        should_release="false"
-        update_notice="$(windows_update_wait_notice "$manifest_path")"
-        if [[ -n "$update_notice" ]]; then
-          skip_reason="$update_notice Latest mirrored package still matches $latest_tag."
+        if public_mirror_latest_matches "$manifest_path" "$latest_tag"; then
+          should_release="false"
+          update_notice="$(windows_update_wait_notice "$manifest_path")"
+          if [[ -n "$update_notice" ]]; then
+            skip_reason="$update_notice Latest mirrored package still matches $latest_tag."
+          else
+            skip_reason="manifest matches latest release $latest_tag"
+          fi
         else
-          skip_reason="manifest matches latest release $latest_tag"
+          release_tag_fallback="$latest_tag"
+          skip_reason="latest release $latest_tag matches current sources, but public mirror aliases or appcasts are stale; republishing"
         fi
       fi
     else
@@ -504,22 +746,32 @@ else
       if [[ "$windows_asset_size" == "$windows_content_length" &&
             "$arm_asset_size" == "$arm_content_length" &&
             "$x64_asset_size" == "$x64_content_length" ]]; then
-        should_release="false"
-        skip_reason="asset names and sizes match latest release $latest_tag"
+        if public_mirror_latest_matches "$manifest_path" "$latest_tag"; then
+          should_release="false"
+          skip_reason="asset names and sizes match latest release $latest_tag"
+        else
+          release_tag_fallback="$latest_tag"
+          skip_reason="latest release $latest_tag asset sizes match current sources, but public mirror aliases or appcasts are stale; republishing"
+        fi
       fi
     fi
   fi
 fi
 
-if [[ "$should_release" == "true" && "$force_release" != "true" && -z "$release_tag_input" ]]; then
+if [[ "$should_release" == "true" && "$force_release" != "true" && -z "$release_tag_input" && -z "$release_tag_fallback" ]]; then
   predicted_tag="$(predicted_release_tag "$windows_version" "$arm_appcast_version" "$arm_appcast_build" "$x64_appcast_version" "$x64_appcast_build")"
   if release_exists "$predicted_tag"; then
-    should_release="false"
-    update_notice="$(windows_update_wait_notice "$manifest_path")"
-    if [[ -n "$update_notice" ]]; then
-      skip_reason="$update_notice Release tag $predicted_tag already exists."
+    if public_mirror_latest_matches "$manifest_path" "$predicted_tag"; then
+      should_release="false"
+      update_notice="$(windows_update_wait_notice "$manifest_path")"
+      if [[ -n "$update_notice" ]]; then
+        skip_reason="$update_notice Release tag $predicted_tag already exists."
+      else
+        skip_reason="release tag $predicted_tag already exists"
+      fi
     else
-      skip_reason="release tag $predicted_tag already exists"
+      release_tag_fallback="$predicted_tag"
+      skip_reason="release tag $predicted_tag already exists, but public mirror aliases or appcasts are stale; republishing"
     fi
   fi
 fi
@@ -528,22 +780,26 @@ if [[ -n "$release_tag_input" ]]; then
   release_tag="$release_tag_input"
 elif [[ "$force_release" == "true" ]]; then
   release_tag="codex-app-force-$(date -u +'%Y%m%d-%H%M%S')"
+elif [[ -n "$release_tag_fallback" ]]; then
+  release_tag="$release_tag_fallback"
 else
   release_tag=""
+fi
+
+if [[ -n "$release_tag" ]]; then
+  validate_release_tag "$release_tag"
 fi
 
 version_summary="windows=$windows_version ($windows_package; updateManifest=$windows_update_version); mac-arm64=$arm_appcast_version-b$arm_appcast_build/$arm_etag/$arm_content_length; mac-x64=$x64_appcast_version-b$x64_appcast_build/$x64_etag/$x64_content_length"
 
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   {
-    echo "should_release=$should_release"
-    echo "release_tag=$release_tag"
-    echo "latest_tag=$latest_tag"
-    echo "skip_reason=$skip_reason"
-    echo "version_summary=$version_summary"
-    echo "manifest<<EOF"
-    cat "$manifest_path"
-    echo "EOF"
+    github_output_value "should_release" "$should_release"
+    github_output_value "release_tag" "$release_tag"
+    github_output_value "latest_tag" "$latest_tag"
+    github_output_value "skip_reason" "$skip_reason"
+    github_output_value "version_summary" "$version_summary"
+    github_output_value "manifest" "$(cat "$manifest_path")"
   } >> "$GITHUB_OUTPUT"
 fi
 

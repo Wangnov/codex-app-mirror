@@ -124,6 +124,8 @@ jobs:
 
       - name: Prepare release metadata
         id: meta
+        env:
+          RELEASE_TAG: ${{ needs.probe.outputs.release_tag }}
         shell: bash
         run: |
           set -euo pipefail
@@ -136,7 +138,7 @@ jobs:
             artifacts/codex-macos/macos-metadata.json \
             artifacts \
             "$R2_PUBLIC_BASE_URL" \
-            "${{ needs.probe.outputs.release_tag }}"
+            "$RELEASE_TAG"
 
       - name: Build macOS Sparkle appcasts
         shell: bash
@@ -149,6 +151,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+          RELEASE_TITLE: ${{ steps.meta.outputs.title }}
         shell: bash
         run: |
           set -euo pipefail
@@ -162,27 +166,106 @@ jobs:
           test -f "$mac_arm64_zip"
           test -f "$mac_intel_zip"
 
-          gh release create "${{ steps.meta.outputs.tag }}" \
-            --title "${{ steps.meta.outputs.title }}" \
-            --notes-file release-notes.md \
-            artifacts/codex-macos/Codex-mac-arm64.dmg \
-            artifacts/codex-macos/Codex-mac-x64.dmg \
-            "$mac_arm64_zip" \
-            "$mac_intel_zip" \
-            artifacts/codex-macos/SHA256SUMS-macos.txt \
-            artifacts/codex-windows/* \
-            assets/status.png \
-            release-manifest.json \
+          mapfile -d '' windows_assets < <(find artifacts/codex-windows -maxdepth 1 -type f -print0 | sort -z)
+          if [[ "${#windows_assets[@]}" -eq 0 ]]; then
+            echo "No Windows release assets found." >&2
+            exit 1
+          fi
+
+          release_assets=(
+            artifacts/codex-macos/Codex-mac-arm64.dmg
+            artifacts/codex-macos/Codex-mac-x64.dmg
+            "$mac_arm64_zip"
+            "$mac_intel_zip"
+            artifacts/codex-macos/SHA256SUMS-macos.txt
+            "${windows_assets[@]}"
+            assets/status.png
+            release-manifest.json
             SHA256SUMS.txt
+          )
+
+          while IFS= read -r bn; do
+            [[ -z "$bn" ]] && continue
+            release_assets+=("artifacts/codex-macos/$bn")
+          done < <(
+            jq -r '
+              .sources.macos.arm64.appcast.deltas[]?.basename // empty,
+              .sources.macos.x64.appcast.deltas[]?.basename // empty
+            ' release-manifest.json
+          )
+
+          for asset in "${release_assets[@]}"; do
+            test -f "$asset"
+          done
+
+          if existing_assets_json="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets' 2>/dev/null)"; then
+            missing_assets=()
+            replacement_assets=()
+            mismatched_assets=()
+            for asset in "${release_assets[@]}"; do
+              name="$(basename "$asset")"
+              local_size="$(wc -c < "$asset" | tr -d '[:space:]')"
+              local_sha="$(sha256sum "$asset" | awk '{print $1}')"
+              existing_size="$(jq -r --arg name "$name" '.[] | select(.name == $name) | .size' <<<"$existing_assets_json" | head -n 1)"
+              existing_digest="$(jq -r --arg name "$name" '.[] | select(.name == $name) | .digest // ""' <<<"$existing_assets_json" | head -n 1)"
+              existing_sha="${existing_digest#sha256:}"
+              if [[ -z "$existing_size" || "$existing_size" == "null" ]]; then
+                missing_assets+=("$asset")
+              elif [[ "$existing_sha" == "$existing_digest" || -z "$existing_sha" ]]; then
+                mismatched_assets+=("$name (release asset has no sha256 digest)")
+              elif [[ "$existing_sha" != "$local_sha" ]]; then
+                case "$name" in
+                  release-manifest.json|SHA256SUMS.txt|SHA256SUMS-macos.txt|SHA256SUMS-windows.txt|status.png)
+                    replacement_assets+=("$asset")
+                    ;;
+                  *)
+                    mismatched_assets+=("$name (release=$existing_size/$existing_sha local=$local_size/$local_sha)")
+                    ;;
+                esac
+              fi
+            done
+
+            if [[ "${#mismatched_assets[@]}" -gt 0 ]]; then
+              echo "Existing release assets differ from the newly built assets; refusing to overwrite them without operator review." >&2
+              printf '  %s\n' "${mismatched_assets[@]}" >&2
+              exit 1
+            fi
+
+            gh release edit "$RELEASE_TAG" \
+              --title "$RELEASE_TITLE" \
+              --latest \
+              --notes-file release-notes.md
+            if [[ "${#missing_assets[@]}" -gt 0 ]]; then
+              gh release upload "$RELEASE_TAG" "${missing_assets[@]}"
+            fi
+            if [[ "${#replacement_assets[@]}" -gt 0 ]]; then
+              for asset in "${replacement_assets[@]}"; do
+                gh release delete-asset "$RELEASE_TAG" "$(basename "$asset")" --yes
+                gh release upload "$RELEASE_TAG" "$asset"
+              done
+            fi
+            if [[ "${#missing_assets[@]}" -eq 0 && "${#replacement_assets[@]}" -eq 0 ]]; then
+              echo "All release assets already exist with matching SHA-256 digests."
+            else
+              echo "Release assets were reconciled without bulk clobbering existing downloads."
+            fi
+          else
+            gh release create "$RELEASE_TAG" \
+              --title "$RELEASE_TITLE" \
+              --latest \
+              --notes-file release-notes.md \
+              "${release_assets[@]}"
+          fi
 
       - name: Remove latest links from previous release notes
-        if: needs.probe.outputs.latest_tag != ''
+        if: needs.probe.outputs.latest_tag != '' && needs.probe.outputs.latest_tag != steps.meta.outputs.tag
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          LATEST_TAG: ${{ needs.probe.outputs.latest_tag }}
         shell: bash
-        run: bash scripts/remove-latest-links-from-release-notes.sh "${{ needs.probe.outputs.latest_tag }}"
+        run: bash scripts/remove-latest-links-from-release-notes.sh "$LATEST_TAG"
 
       - name: Ensure AWS CLI
         shell: bash
@@ -199,6 +282,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
           R2_S3_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
         shell: bash
         run: |
           set -euo pipefail
@@ -239,7 +323,7 @@ jobs:
             test -f "artifacts/codex-macos/$bn"
           done < <(cat /tmp/arm-delta-basenames.txt /tmp/x64-delta-basenames.txt)
 
-          staging_prefix="staging/${{ steps.meta.outputs.tag }}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          staging_prefix="staging/${RELEASE_TAG}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           cleanup_staging() {
             bash scripts/clear-r2-prefix.sh "$R2_BUCKET_NAME" "$staging_prefix" || true
           }
@@ -499,7 +583,10 @@ jobs:
     if: needs.probe.outputs.should_release != 'true'
     steps:
       - name: Report current state
+        env:
+          SKIP_REASON: ${{ needs.probe.outputs.skip_reason }}
+          VERSION_SUMMARY: ${{ needs.probe.outputs.version_summary }}
         run: |
           echo "No new Codex app version detected."
-          echo "${{ needs.probe.outputs.skip_reason }}"
-          echo "${{ needs.probe.outputs.version_summary }}"
+          echo "$SKIP_REASON"
+          echo "$VERSION_SUMMARY"
