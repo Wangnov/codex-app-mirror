@@ -5,24 +5,20 @@ using System.Security;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
 internal static class Program
 {
     private const string ProductPrefix = "OpenAI.Codex_";
     private const string DisplayCatalogBaseUrl = "https://displaycatalog.mp.microsoft.com/v7.0/products";
+    private const string Fe3Host = "fe3.delivery.mp.microsoft.com";
     private const string Fe3Endpoint = "https://fe3.delivery.mp.microsoft.com/ClientWebService/client.asmx";
     private const string Fe3SecuredEndpoint = "https://fe3.delivery.mp.microsoft.com/ClientWebService/client.asmx/secured";
     private const string WindowsDesktopDeviceAttributes = "OSArchitecture=AMD64;DeviceFamily=Windows.Desktop;App=WU;AppVer=10.0.22621.1;OSVersion=10.0.22621.1;InstallationType=Client;IsDeviceRetailDemo=0;";
-
-    private static readonly Regex UpdateIdentityPattern = new(
-        @"<UpdateIdentity\s+UpdateID=""(?<id>[^""]+)""\s+RevisionNumber=""(?<revision>[^""]+)""",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
-    private static readonly Regex AppxMetadataPattern = new(
-        """<AppxMetadata\b(?=[^>]*\bPackageType="(?<type>[^"]+)")(?=[^>]*\bPackageMoniker="(?<moniker>[^"]+)")[^>]*>""",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    // X509Certificate2.Thumbprint is SHA-1. This pins the Microsoft Update
+    // Secure Server CA 2.1 intermediate that signs FE3 delivery certificates.
+    private const string MicrosoftUpdateSecureServerCa21Sha1Thumbprint =
+        "7EED6032C9F56387EC734CBBF32BFC14DB6DE0A2";
 
     // Baseline non-leaf Windows Store categories/detectoids needed for FE3 to
     // evaluate a normal Windows Desktop x64 device and return package updates.
@@ -171,19 +167,35 @@ internal static class Program
         if (sslPolicyErrors != SslPolicyErrors.RemoteCertificateChainErrors
             || certificate is null
             || chain is null
-            || request.RequestUri?.Host is not "fe3.delivery.mp.microsoft.com")
+            || !string.Equals(request.RequestUri?.Host, Fe3Host, StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
 
-        var hasOnlyMicrosoftUpdateRootErrors = chain.ChainStatus.Length > 0
+        var now = DateTime.UtcNow;
+        if (now < certificate.NotBefore.ToUniversalTime() || now > certificate.NotAfter.ToUniversalTime())
+        {
+            return false;
+        }
+
+        var hasOnlyExpectedChainErrors = chain.ChainStatus.Length > 0
             && chain.ChainStatus.All(status =>
                 status.Status is X509ChainStatusFlags.UntrustedRoot or X509ChainStatusFlags.PartialChain);
-        var hasExpectedMicrosoftIssuer = certificate.Issuer.Contains("Microsoft Update Secure Server CA", StringComparison.Ordinal);
         var hasExpectedDeliveryName = certificate.GetNameInfo(X509NameType.DnsName, false)
             .Equals("*.delivery.mp.microsoft.com", StringComparison.OrdinalIgnoreCase);
+        if (!hasOnlyExpectedChainErrors || !hasExpectedDeliveryName || chain.ChainElements.Count < 2)
+        {
+            return false;
+        }
 
-        return hasOnlyMicrosoftUpdateRootErrors && hasExpectedMicrosoftIssuer && hasExpectedDeliveryName;
+        var intermediate = chain.ChainElements[1].Certificate;
+        var hasPinnedIntermediate = string.Equals(
+            NormalizeThumbprint(intermediate.Thumbprint),
+            MicrosoftUpdateSecureServerCa21Sha1Thumbprint,
+            StringComparison.OrdinalIgnoreCase);
+        var chainsToPinnedIntermediate = string.Equals(certificate.Issuer, intermediate.Subject, StringComparison.Ordinal);
+
+        return hasPinnedIntermediate && chainsToPinnedIntermediate;
     }
 
     private static async Task<string> GetCookieAsync(HttpClient httpClient)
@@ -276,25 +288,50 @@ internal static class Program
 
         foreach (var xmlElement in document.Descendants().Where(e => e.Name.LocalName == "Xml"))
         {
-            var fragment = WebUtility.HtmlDecode(xmlElement.Value);
-            if (!fragment.Contains("AppxMetadata", StringComparison.OrdinalIgnoreCase)
-                || !fragment.Contains("SecuredFragment", StringComparison.OrdinalIgnoreCase))
+            var fragment = xmlElement.Value;
+            var fragmentDocument = TryParseXmlFragment(fragment);
+            if (!HasPackageFragmentElements(fragmentDocument))
+            {
+                var decodedFragment = WebUtility.HtmlDecode(fragment);
+                if (!string.Equals(decodedFragment, fragment, StringComparison.Ordinal))
+                {
+                    var decodedDocument = TryParseXmlFragment(decodedFragment);
+                    if (HasPackageFragmentElements(decodedDocument))
+                    {
+                        fragmentDocument = decodedDocument;
+                    }
+                }
+
+            }
+            if (fragmentDocument is null || !HasPackageFragmentElements(fragmentDocument))
             {
                 continue;
             }
 
-            var identityMatch = UpdateIdentityPattern.Match(fragment);
-            var packageMatch = AppxMetadataPattern.Match(fragment);
-            if (!identityMatch.Success || !packageMatch.Success)
+            var identityElement = fragmentDocument
+                .Descendants()
+                .FirstOrDefault(e => e.Name.LocalName == "UpdateIdentity");
+            var packageElement = fragmentDocument
+                .Descendants()
+                .FirstOrDefault(e => e.Name.LocalName == "AppxMetadata");
+            var updateId = AttributeOrElement(identityElement, "UpdateID");
+            var revisionNumber = AttributeOrElement(identityElement, "RevisionNumber");
+            var packageMoniker = AttributeOrElement(packageElement, "PackageMoniker");
+            var packageType = AttributeOrElement(packageElement, "PackageType");
+
+            if (string.IsNullOrWhiteSpace(updateId)
+                || string.IsNullOrWhiteSpace(revisionNumber)
+                || string.IsNullOrWhiteSpace(packageMoniker)
+                || string.IsNullOrWhiteSpace(packageType))
             {
                 continue;
             }
 
             candidates.Add(new PackageCandidate(
-                packageMatch.Groups["moniker"].Value,
-                packageMatch.Groups["type"].Value,
-                identityMatch.Groups["id"].Value,
-                identityMatch.Groups["revision"].Value));
+                packageMoniker,
+                packageType,
+                updateId,
+                revisionNumber));
         }
 
         return candidates;
@@ -327,8 +364,10 @@ internal static class Program
             .Descendants()
             .Where(e => e.Name.LocalName == "Url")
             .Select(e => e.Value)
-            .Where(url => Uri.TryCreate(url, UriKind.Absolute, out _))
-            .OrderByDescending(url => url.Length)
+            .Select(url => Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri : null)
+            .Where(uri => uri is not null && IsAllowedPackageUri(uri))
+            .OrderByDescending(uri => uri!.AbsoluteUri.Length)
+            .Select(uri => uri!.AbsoluteUri)
             .ToList();
 
         return urls.FirstOrDefault()
@@ -429,6 +468,58 @@ internal static class Program
         }
 
         return null;
+    }
+
+    private static bool HasPackageFragmentElements(XDocument? document)
+    {
+        return document is not null
+            && document.Descendants().Any(e => e.Name.LocalName == "AppxMetadata")
+            && document.Descendants().Any(e => e.Name.LocalName == "SecuredFragment");
+    }
+
+    private static XDocument? TryParseXmlFragment(string fragment)
+    {
+        try
+        {
+            return XDocument.Parse($"<Root>{fragment}</Root>");
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string AttributeOrElement(XElement? element, string name)
+    {
+        if (element is null)
+        {
+            return string.Empty;
+        }
+
+        return element.Attribute(name)?.Value
+            ?? element.Elements().FirstOrDefault(e => e.Name.LocalName == name)?.Value
+            ?? string.Empty;
+    }
+
+    private static bool IsAllowedPackageUri(Uri uri)
+    {
+        if (uri.Scheme is not "http" and not "https")
+        {
+            return false;
+        }
+
+        return HostIsOrSubdomainOf(uri.Host, "dl.delivery.mp.microsoft.com");
+    }
+
+    private static bool HostIsOrSubdomainOf(string host, string domain)
+    {
+        return string.Equals(host, domain, StringComparison.OrdinalIgnoreCase)
+            || host.EndsWith($".{domain}", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeThumbprint(string? value)
+    {
+        return string.Concat((value ?? string.Empty).Where(c => !char.IsWhiteSpace(c) && c != ':'));
     }
 
     private static Version ExtractVersion(string packageMoniker)
