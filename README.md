@@ -14,6 +14,7 @@
 </p>
 
 <p align="center">
+  <a href="https://codexapp.agentsmirror.com"><img src="https://img.shields.io/badge/website-codexapp.agentsmirror.com-7c83ff" alt="Official website"></a>
   <a href="https://github.com/Wangnov/codex-app-mirror/releases/latest"><img src="https://img.shields.io/endpoint?url=https://codexapp.agentsmirror.com/stats/downloads.json" alt="R2 cumulative installer downloads"></a>
   <a href="https://github.com/Wangnov/codex-app-mirror/stargazers"><img src="https://img.shields.io/github/stars/Wangnov/codex-app-mirror?logo=github&label=stars&color=f5c518" alt="GitHub stars"></a>
   <a href="https://github.com/Wangnov/codex-app-mirror/releases/latest"><img src="https://img.shields.io/github/release-date/Wangnov/codex-app-mirror?label=updated&logo=github" alt="Latest update time"></a>
@@ -26,7 +27,12 @@
 </p>
 
 <p align="center">
-  <a href="#readme-cn">中文</a> · <a href="#readme-en">English</a>
+  <a href="https://codexapp.agentsmirror.com"><b>官网 · Official Website</b></a> · <a href="#readme-cn">中文</a> · <a href="#readme-en">English</a>
+</p>
+
+<p align="center">
+  🖥️ 不想手动下载?<b><a href="https://github.com/Wangnov/Codex-App-Manager">Codex App Manager</a></b> 是基于本镜像的桌面客户端——一键安装、增量更新、干净卸载官方 Codex。<br>
+  🖥️ Prefer one click? <b><a href="https://github.com/Wangnov/Codex-App-Manager">Codex App Manager</a></b> — the desktop client built on this mirror — installs, updates and uninstalls official Codex for you.
 </p>
 
 ---
@@ -126,6 +132,8 @@ macOS 版除了手动下载 DMG，还支持 **Sparkle 增量自动更新**。下
 ### 生态：Codex App Manager
 
 本镜像不只是给人手动下载——它是 **Codex App Manager** 桌面客户端的更新后端。客户端在本地检测平台与能力，并消费这里的 Sparkle appcast 完成安装与增量更新。镜像保持窄而稳，把"分发与更新"这层基础设施沉淀下来。
+
+➡️ 官网：[codexapp.agentsmirror.com](https://codexapp.agentsmirror.com) · 仓库：[Wangnov/Codex-App-Manager](https://github.com/Wangnov/Codex-App-Manager)
 
 ## 版本号说明
 
@@ -277,6 +285,8 @@ The router reads `CF-IPCountry` and sends mainland-China visitors to the S3 mirr
 ### Ecosystem: Codex App Manager
 
 This mirror isn't only for manual downloads — it's the update backend for the **Codex App Manager** desktop client, which detects platform/capabilities locally and consumes the Sparkle appcast here for install and incremental updates. The mirror stays narrow and stable, owning the "distribution + update" infrastructure layer.
+
+➡️ Website: [codexapp.agentsmirror.com](https://codexapp.agentsmirror.com) · Repo: [Wangnov/Codex-App-Manager](https://github.com/Wangnov/Codex-App-Manager)
 
 ## Version numbers
 
