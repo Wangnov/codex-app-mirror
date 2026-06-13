@@ -55,6 +55,10 @@ jobs:
         shell: bash
         run: scripts/test-probe-release.sh
 
+      - name: Test release probe Windows-rollout fixture
+        shell: bash
+        run: scripts/test-probe-release-windows-rollout.sh
+
       - name: Test appcast generation fixture
         shell: bash
         run: scripts/test-build-appcast.sh

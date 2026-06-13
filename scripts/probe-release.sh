@@ -115,30 +115,6 @@ object_size_from_range_headers() {
   return 1
 }
 
-version_gt() {
-  python3 - "$1" "$2" <<'PY'
-import sys
-
-
-def parse(version):
-    parts = []
-    for part in version.split("."):
-        try:
-            parts.append(int(part))
-        except ValueError:
-            parts.append(part)
-    return parts
-
-
-left = parse(sys.argv[1])
-right = parse(sys.argv[2])
-length = max(len(left), len(right))
-left.extend([0] * (length - len(left)))
-right.extend([0] * (length - len(right)))
-raise SystemExit(0 if left > right else 1)
-PY
-}
-
 appcast_latest() {
   local label="$1"
   local url="$2"
@@ -233,9 +209,12 @@ github_api_json_allow_404() {
     rm -f "$err_file"
     printf '%s\n' "$output"
     return 0
+  else
+    # Capture gh's real exit status here: `$?` taken after the closing `fi` would
+    # be the if-statement's status (0 when the condition is false and there is no
+    # else), masking the failure.
+    status=$?
   fi
-
-  status=$?
   if grep -q 'HTTP 404' "$err_file"; then
     rm -f "$err_file"
     return 1
@@ -253,9 +232,11 @@ latest_release_tag() {
   if release_json="$(github_api_json_allow_404 'repos/{owner}/{repo}/releases/latest')"; then
     jq -r '.tag_name // ""' <<<"$release_json"
     return 0
+  else
+    # `$?` after the closing `fi` is the if-statement's status (0 on a false
+    # condition with no else), not the helper's — capture it in the else branch.
+    status=$?
   fi
-
-  status=$?
   if [[ "$status" -eq 1 ]]; then
     printf ''
     return 0
@@ -296,9 +277,13 @@ release_exists() {
 
   if github_api_json_allow_404 "repos/{owner}/{repo}/releases/tags/$1" >/dev/null; then
     return 0
+  else
+    # `$?` after the closing `fi` is the if-statement's status (0 on a false
+    # condition with no else), not the helper's — capture it in the else branch
+    # so a 404 (status 1) is treated as "absent" instead of falling through to
+    # `exit "$status"` and silently terminating the whole probe.
+    status=$?
   fi
-
-  status=$?
   if [[ "$status" -eq 1 ]]; then
     return 1
   fi
@@ -713,14 +698,17 @@ if [[ "$force_release" == "true" ]]; then
 else
   latest_tag="$(latest_release_tag)"
   update_notice="$(windows_update_wait_notice "$manifest_path")"
-  if [[ -n "$windows_update_version" && -n "$windows_version" ]] && version_gt "$windows_update_version" "$windows_version"; then
-    should_release="false"
-    if [[ -n "$latest_tag" ]]; then
-      skip_reason="$update_notice Latest release remains $latest_tag."
-    else
-      skip_reason="$update_notice"
-    fi
-  elif [[ -n "$latest_tag" ]]; then
+  # The Windows Store update manifest can advertise a new build before its MSIX
+  # bytes are downloadable. `update_notice` captures that wait, but it must NOT
+  # veto a release: `should_release` gates the combined win+mac publish, so a
+  # veto here also blocks a macOS update that is already downloadable (mac ships
+  # from persistent.oaistatic.com, independent of the Microsoft Store rollout).
+  # The generated manifest always records the DOWNLOADABLE Windows version (never
+  # the advertised one — see parse_manifest consumers), so the manifest-key
+  # comparison below releases only when real downloadable bytes change (macOS
+  # now, or Windows once its MSIX lands) and no-ops otherwise. The notice is woven
+  # into the skip/release messaging purely as context.
+  if [[ -n "$latest_tag" ]]; then
     if download_release_asset "$latest_tag" release-manifest.json "$tmp_dir" >/dev/null 2>&1; then
       current_key="$(manifest_key "$manifest_path")"
       previous_key="$(manifest_key "$tmp_dir/release-manifest.json")"
