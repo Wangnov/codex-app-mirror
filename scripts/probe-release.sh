@@ -703,11 +703,11 @@ else
   # veto a release: `should_release` gates the combined win+mac publish, so a
   # veto here also blocks a macOS update that is already downloadable (mac ships
   # from persistent.oaistatic.com, independent of the Microsoft Store rollout).
-  # The generated manifest always records the DOWNLOADABLE Windows version (never
-  # the advertised one — see parse_manifest consumers), so the manifest-key
-  # comparison below releases only when real downloadable bytes change (macOS
-  # now, or Windows once its MSIX lands) and no-ops otherwise. The notice is woven
-  # into the skip/release messaging purely as context.
+  # The generated manifest always records the DOWNLOADABLE Windows version in
+  # sources.windows.version (never the advertised updateManifest.buildVersion),
+  # so the manifest-key comparison below releases only when real downloadable
+  # bytes change (macOS now, or Windows once its MSIX lands) and no-ops otherwise.
+  # The notice is woven into the skip/release messaging purely as context.
   if [[ -n "$latest_tag" ]]; then
     if download_release_asset "$latest_tag" release-manifest.json "$tmp_dir" >/dev/null 2>&1; then
       current_key="$(manifest_key "$manifest_path")"
