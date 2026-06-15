@@ -137,10 +137,18 @@ cat > "$tmp_dir/bin/curl" <<'CURL'
 set -euo pipefail
 
 head_request=false
+headers_file=""
 url=""
 while (($#)); do
   case "$1" in
+    -D)
+      headers_file="$2"
+      shift
+      ;;
     -o)
+      shift
+      ;;
+    --range)
       shift
       ;;
     -I|-*I*)
@@ -155,6 +163,7 @@ done
 
 emit_headers() {
   printf 'HTTP/2 200\r\n'
+  printf 'content-range: bytes 0-0/3\r\n'
   printf 'content-length: 3\r\n'
   printf 'last-modified: Fri, 12 Jun 2026 22:15:02 GMT\r\n'
   printf 'etag: %s\r\n' "$1"
@@ -177,7 +186,7 @@ emit_appcast() {
       <sparkle:shortVersionString>26.609.41114</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
       <sparkle:hardwareRequirements>${hardware}</sparkle:hardwareRequirements>
-      <enclosure url="https://persistent.oaistatic.com/codex-app-prod/Codex-darwin-${arch}-26.609.41114.zip" length="3" type="application/octet-stream" sparkle:edSignature="${sig}" />
+      <enclosure url="https://persistent.oaistatic.com/codex-app-prod/Codex-darwin-${arch}-26.609.41114.zip" length="999" type="application/octet-stream" sparkle:edSignature="${sig}" />
     </item>
   </channel>
 </rss>
@@ -189,7 +198,16 @@ if $head_request; then
     *OpenAI.Codex_26.608.1337.0_x64__2p2nqsd0c76g0.Msix) emit_headers "windows-etag-608" ;;
     *Codex-26.609.41114-arm64.dmg) emit_headers "arm-etag-609" ;;
     *Codex-26.609.41114-x64.dmg) emit_headers "x64-etag-609" ;;
+    *Codex-darwin-arm64-26.609.41114.zip|*Codex-darwin-x64-26.609.41114.zip) emit_headers "zip-etag-609" ;;
     *) echo "unexpected curl headers URL: $url" >&2; exit 1 ;;
+  esac
+  exit 0
+fi
+
+if [[ -n "$headers_file" ]]; then
+  case "$url" in
+    *Codex-darwin-arm64-26.609.41114.zip|*Codex-darwin-x64-26.609.41114.zip) emit_headers "zip-etag-609" > "$headers_file" ;;
+    *) echo "unexpected curl range URL: $url" >&2; exit 1 ;;
   esac
   exit 0
 fi
@@ -246,6 +264,13 @@ fi
 manifest_mac_version="$(jq -r '.sources.macos.arm64.appcast.shortVersionString' "$tmp_dir/probe-manifest.json")"
 if [[ "$manifest_mac_version" != "26.609.41114" ]]; then
   echo "Expected manifest macOS arm64 shortVersionString 26.609.41114, got '$manifest_mac_version'." >&2
+  exit 1
+fi
+
+manifest_arm_zip_length="$(jq -r '.sources.macos.arm64.appcast.enclosureLength' "$tmp_dir/probe-manifest.json")"
+manifest_x64_zip_length="$(jq -r '.sources.macos.x64.appcast.enclosureLength' "$tmp_dir/probe-manifest.json")"
+if [[ "$manifest_arm_zip_length" != "3" || "$manifest_x64_zip_length" != "3" ]]; then
+  echo "Expected manifest Sparkle archive lengths to use source object sizes, got arm64='$manifest_arm_zip_length' x64='$manifest_x64_zip_length'." >&2
   exit 1
 fi
 

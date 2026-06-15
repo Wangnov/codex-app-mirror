@@ -115,6 +115,29 @@ object_size_from_range_headers() {
   return 1
 }
 
+source_object_size() {
+  local label="$1"
+  local url="$2"
+  local headers
+  local size
+
+  if [[ -z "$url" || "$url" == "null" ]]; then
+    echo "Missing $label URL; cannot determine source object size." >&2
+    return 1
+  fi
+
+  if ! headers="$(curl_range_headers "$label" "$url")"; then
+    echo "Failed to fetch $label source object size." >&2
+    return 1
+  fi
+  if ! size="$(object_size_from_range_headers "$headers")"; then
+    echo "Could not determine $label source object size from range headers." >&2
+    return 1
+  fi
+
+  printf '%s' "$size"
+}
+
 appcast_latest() {
   local label="$1"
   local url="$2"
@@ -190,7 +213,51 @@ payload = {
     "deltas": deltas,
 }
 print(json.dumps(payload, sort_keys=True))
-'
+    '
+}
+
+reconcile_appcast_object_lengths() {
+  local label="$1"
+  local appcast_json="$2"
+  local tmp
+  local next
+  local url
+  local expected_size
+  local actual_size
+  local count
+  local i
+
+  tmp="$(mktemp)"
+  next="$tmp.next"
+  printf '%s\n' "$appcast_json" > "$tmp"
+
+  url="$(jq -r '.enclosureUrl // ""' "$tmp")"
+  expected_size="$(jq -r '.enclosureLength // 0' "$tmp")"
+  actual_size="$(source_object_size "$label Sparkle archive" "$url")"
+  if [[ "$actual_size" != "$expected_size" ]]; then
+    echo "$label appcast enclosure length $expected_size differs from source object size $actual_size; using source object size." >&2
+  fi
+  jq --argjson actual "$actual_size" '.enclosureLength = $actual' "$tmp" > "$next"
+  mv "$next" "$tmp"
+
+  count="$(jq -r '.deltas | length // 0' "$tmp")"
+  for ((i = 0; i < count; i++)); do
+    url="$(jq -r --argjson i "$i" '.deltas[$i].url // ""' "$tmp")"
+    expected_size="$(jq -r --argjson i "$i" '.deltas[$i].length // 0' "$tmp")"
+    actual_size="$(source_object_size "$label Sparkle delta[$i]" "$url")"
+    if [[ "$actual_size" != "$expected_size" ]]; then
+      echo "$label appcast delta[$i] length $expected_size differs from source object size $actual_size; using source object size." >&2
+    fi
+    jq --argjson i "$i" --argjson actual "$actual_size" '
+      .deltas[$i].length = $actual
+      | .deltas[$i].attributes = (.deltas[$i].attributes // {})
+      | .deltas[$i].attributes.length = ($actual | tostring)
+    ' "$tmp" > "$next"
+    mv "$next" "$tmp"
+  done
+
+  cat "$tmp"
+  rm -f "$tmp" "$next"
 }
 
 asset_size() {
@@ -598,6 +665,8 @@ windows_etag="$(header_value "$windows_headers" "etag")"
 
 arm_appcast_json="$(appcast_latest "macOS arm64 appcast" "$arm_appcast_url")"
 x64_appcast_json="$(appcast_latest "macOS x64 appcast" "$x64_appcast_url")"
+arm_appcast_json="$(reconcile_appcast_object_lengths "macOS arm64" "$arm_appcast_json")"
+x64_appcast_json="$(reconcile_appcast_object_lengths "macOS x64" "$x64_appcast_json")"
 arm_appcast_version="$(jq -r '.shortVersionString' <<<"$arm_appcast_json")"
 arm_appcast_build="$(jq -r '.version' <<<"$arm_appcast_json")"
 x64_appcast_version="$(jq -r '.shortVersionString' <<<"$x64_appcast_json")"

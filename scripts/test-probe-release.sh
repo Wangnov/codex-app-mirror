@@ -252,6 +252,10 @@ headers_for_url() {
     *Codex-1.2.3-x64.dmg)
       emit_headers "x64-etag"
       ;;
+    *persistent.oaistatic.com/codex-app-prod/Codex-darwin-arm64-1.2.3.zip|\
+    *persistent.oaistatic.com/codex-app-prod/Codex-darwin-x64-1.2.3.zip)
+      emit_headers "source-zip-etag"
+      ;;
     *codexapp.agentsmirror.com/latest/win*|\
     *codexapp.agentsmirror.com/latest/mac-arm64*|\
     *codexapp.agentsmirror.com/latest/mac-intel*|\

@@ -9,10 +9,11 @@ set -euo pipefail
 # archive byte-for-byte, the original `sparkle:edSignature` stays valid even
 # though the enclosure URL points at the mirror.
 #
-# This script therefore copies every upstream appcast field verbatim
-# (shortVersionString, version, minimumSystemVersion, pubDate, title,
-# hardwareRequirements, enclosureLength, enclosureSignature) and only rewrites
-# the enclosure URL to the mirrored archive location.
+# This script therefore copies upstream appcast metadata and only rewrites the
+# enclosure URL to the mirrored archive location. Length fields come from the
+# probe manifest's verified source object sizes, because upstream appcast lengths
+# can lag the actual object headers while the EdDSA signature still matches the
+# copied archive bytes.
 #
 # When the probe captured upstream <sparkle:deltas>, this script re-emits them
 # too: one delta <enclosure> per entry with the URL host swapped to the mirror
