@@ -47,7 +47,7 @@ prefix="${2#/}"
 prefix="${prefix%/}"
 shift 2
 region="${AWS_DEFAULT_REGION:-auto}"
-grace_days="${PRUNE_GRACE_DAYS:-7}"
+grace_days="${PRUNE_GRACE_DAYS:-1}"
 
 if [[ -z "$bucket" || -z "$prefix" ]]; then
   echo "Bucket and prefix are required." >&2

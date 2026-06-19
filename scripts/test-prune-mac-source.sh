@@ -82,7 +82,7 @@ AWS_RM_LOG="$rm_log" \
 R2_S3_ENDPOINT="https://example.invalid" \
 AWS_ACCESS_KEY_ID="test" \
 AWS_SECRET_ACCESS_KEY="test" \
-PRUNE_GRACE_DAYS=7 \
+PRUNE_GRACE_DAYS=1 \
   bash scripts/prune-mac-source.sh \
     test-bucket \
     latest/mac \
@@ -126,7 +126,7 @@ R2_S3_ENDPOINT="https://fgws3.example.invalid" \
 AWS_ACCESS_KEY_ID="secondary" \
 AWS_SECRET_ACCESS_KEY="secondary" \
 AWS_DEFAULT_REGION="auto" \
-PRUNE_GRACE_DAYS=7 \
+PRUNE_GRACE_DAYS=1 \
   bash scripts/prune-mac-source.sh \
     secondary-bucket \
     latest/mac \
