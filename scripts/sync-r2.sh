@@ -50,14 +50,34 @@ upload_file() {
   fi
 
   echo "Uploading $file to r2://$bucket/$object_path"
-  aws s3 cp "$file" "s3://$bucket/$object_path" \
-    --endpoint-url "$R2_S3_ENDPOINT" \
-    --region "${AWS_DEFAULT_REGION:-auto}" \
-    --content-type "$content_type" \
-    --content-disposition "attachment; filename=\"$download_name\"" \
-    --cache-control "$cache_control" \
-    --no-progress \
-    "${timeout_args[@]}"
+  case "${R2_UPLOAD_MODE:-s3-cp}" in
+    s3-cp)
+      aws s3 cp "$file" "s3://$bucket/$object_path" \
+        --endpoint-url "$R2_S3_ENDPOINT" \
+        --region "${AWS_DEFAULT_REGION:-auto}" \
+        --content-type "$content_type" \
+        --content-disposition "attachment; filename=\"$download_name\"" \
+        --cache-control "$cache_control" \
+        --no-progress \
+        "${timeout_args[@]}"
+      ;;
+    put-object)
+      aws s3api put-object \
+        --bucket "$bucket" \
+        --key "$object_path" \
+        --body "$file" \
+        --endpoint-url "$R2_S3_ENDPOINT" \
+        --region "${AWS_DEFAULT_REGION:-auto}" \
+        --content-type "$content_type" \
+        --content-disposition "attachment; filename=\"$download_name\"" \
+        --cache-control "$cache_control" \
+        "${timeout_args[@]}"
+      ;;
+    *)
+      echo "R2_UPLOAD_MODE must be s3-cp or put-object, got '${R2_UPLOAD_MODE:-}'." >&2
+      exit 2
+      ;;
+  esac
 }
 
 if [[ "${1:-}" == "--object" ]]; then

@@ -12,7 +12,9 @@ mkdir -p "$tmp_dir/bin" "$tmp_dir/artifacts"
 aws_log="$tmp_dir/aws.log"
 config_snapshot="$tmp_dir/aws-config.snapshot"
 fail_once_marker="$tmp_dir/failed-once"
+object_state_dir="$tmp_dir/object-state"
 : > "$aws_log"
+mkdir -p "$object_state_dir"
 
 cat > "$tmp_dir/bin/aws" <<'AWS'
 #!/usr/bin/env bash
@@ -24,17 +26,54 @@ if [[ -n "${AWS_CONFIG_FILE:-}" && ! -f "${TEST_AWS_CONFIG_SNAPSHOT:?TEST_AWS_CO
 fi
 printf 'ENV AWS_MAX_ATTEMPTS=%s AWS_RETRY_MODE=%s\n' "${AWS_MAX_ATTEMPTS:-}" "${AWS_RETRY_MODE:-}" >> "$TEST_AWS_LOG"
 
-target=""
-for arg in "$@"; do
-  case "$arg" in
-    s3://*) target="$arg" ;;
-  esac
-done
+state_path() {
+  local key="$1"
+  printf '%s/%s' "${TEST_OBJECT_STATE_DIR:?TEST_OBJECT_STATE_DIR must be set}" "${key//\//__}"
+}
 
-if [[ "$target" == "s3://secondary-bucket/latest/mac-arm64" && ! -f "${TEST_FAIL_ONCE_MARKER:?TEST_FAIL_ONCE_MARKER must be set}" ]]; then
-  touch "$TEST_FAIL_ONCE_MARKER"
-  echo "upload failed: test Connect timeout on endpoint URL: \"$target?uploads\"" >&2
-  exit 1
+if [[ "${1:-}" == "s3api" && "${2:-}" == "put-object" ]]; then
+  shift 2
+  bucket=""
+  key=""
+  body=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --bucket) bucket="$2"; shift 2 ;;
+      --key) key="$2"; shift 2 ;;
+      --body) body="$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+
+  target="s3://$bucket/$key"
+  printf 'PUT %s\n' "$target" >> "$TEST_AWS_LOG"
+  if [[ "$target" == "s3://secondary-bucket/latest/mac-arm64" && ! -f "${TEST_FAIL_ONCE_MARKER:?TEST_FAIL_ONCE_MARKER must be set}" ]]; then
+    touch "$TEST_FAIL_ONCE_MARKER"
+    echo "upload failed: test Connect timeout on endpoint URL: \"$target?uploads\"" >&2
+    exit 1
+  fi
+
+  wc -c < "$body" | tr -d '[:space:]' > "$(state_path "$key")"
+  exit 0
+fi
+
+if [[ "${1:-}" == "s3api" && "${2:-}" == "head-object" ]]; then
+  shift 2
+  bucket=""
+  key=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --bucket) bucket="$2"; shift 2 ;;
+      --key) key="$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+
+  target="s3://$bucket/$key"
+  printf 'HEAD %s\n' "$target" >> "$TEST_AWS_LOG"
+  cat "$(state_path "$key")"
+  printf '\n'
+  exit 0
 fi
 
 exit 0
@@ -80,6 +119,7 @@ XML
   PATH="$tmp_dir/bin:$PATH" \
   TEST_AWS_LOG="$aws_log" \
   TEST_AWS_CONFIG_SNAPSHOT="$config_snapshot" \
+  TEST_OBJECT_STATE_DIR="$object_state_dir" \
   TEST_FAIL_ONCE_MARKER="$fail_once_marker" \
   SECONDARY_S3_ENDPOINT="https://s3.example.invalid" \
   SECONDARY_S3_BUCKET="secondary-bucket" \
@@ -92,6 +132,7 @@ XML
   SECONDARY_S3_READ_TIMEOUT_SECONDS=11 \
   SECONDARY_S3_AWS_MAX_ATTEMPTS=5 \
   SECONDARY_S3_AWS_RETRY_MODE=standard \
+  SECONDARY_S3_UPLOAD_MODE=put-object \
   SECONDARY_S3_MULTIPART_THRESHOLD=16MB \
   SECONDARY_S3_MULTIPART_CHUNKSIZE=32MB \
   SECONDARY_S3_MAX_CONCURRENT_REQUESTS=1 \
@@ -107,13 +148,15 @@ XML
       "$tmp_dir/artifacts/appcast-x64.xml"
 )
 
-test "$(grep -c 's3://secondary-bucket/latest/mac-arm64' "$aws_log")" = "2"
+test "$(grep -c 'PUT s3://secondary-bucket/latest/mac-arm64' "$aws_log")" = "2"
+grep -Fq 'HEAD s3://secondary-bucket/latest/mac-arm64' "$aws_log"
 grep -Fq -- '--cli-connect-timeout 7' "$aws_log"
 grep -Fq -- '--cli-read-timeout 11' "$aws_log"
 grep -Fq 'ENV AWS_MAX_ATTEMPTS=5 AWS_RETRY_MODE=standard' "$aws_log"
-grep -Fq 's3://secondary-bucket/latest/win' "$aws_log"
-grep -Fq 's3://secondary-bucket/latest/mac/arm64/Codex1234-1200-arm64.delta' "$aws_log"
-grep -Fq 's3://secondary-bucket/latest/appcast.xml' "$aws_log"
+grep -Fq 'PUT s3://secondary-bucket/latest/win' "$aws_log"
+grep -Fq 'PUT s3://secondary-bucket/latest/mac/arm64/Codex1234-1200-arm64.delta' "$aws_log"
+grep -Fq 'PUT s3://secondary-bucket/latest/appcast.xml' "$aws_log"
+grep -Fq 'CALL s3api put-object' "$aws_log"
 
 grep -Fq 'max_attempts = 5' "$config_snapshot"
 grep -Fq 'max_concurrent_requests = 1' "$config_snapshot"

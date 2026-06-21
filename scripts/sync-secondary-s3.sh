@@ -32,6 +32,7 @@ aws_retry_mode="${SECONDARY_S3_AWS_RETRY_MODE:-standard}"
 multipart_threshold="${SECONDARY_S3_MULTIPART_THRESHOLD:-64MB}"
 multipart_chunksize="${SECONDARY_S3_MULTIPART_CHUNKSIZE:-64MB}"
 max_concurrent_requests="${SECONDARY_S3_MAX_CONCURRENT_REQUESTS:-2}"
+upload_mode="${SECONDARY_S3_UPLOAD_MODE:-put-object}"
 
 if [[ -z "$prefix" ]]; then
   echo "SECONDARY_S3_PREFIX must not resolve to an empty prefix." >&2
@@ -94,6 +95,7 @@ export R2_S3_ENDPOINT="$SECONDARY_S3_ENDPOINT"
 export R2_CACHE_CONTROL="$cache_control"
 export R2_CLI_CONNECT_TIMEOUT_SECONDS="$connect_timeout"
 export R2_CLI_READ_TIMEOUT_SECONDS="$read_timeout"
+export R2_UPLOAD_MODE="$upload_mode"
 
 mac_arm64="$1"
 mac_intel="$2"
@@ -157,11 +159,15 @@ secondary_upload_object() {
   local file="$2"
   local download_name="$3"
   local attempt
+  local expected_size
   local rc
+
+  expected_size="$(wc -c < "$file" | tr -d '[:space:]')"
 
   for ((attempt = 1; attempt <= upload_attempts; attempt++)); do
     echo "Secondary S3 upload attempt $attempt/$upload_attempts: $object_path"
-    if bash "$repo_root/scripts/sync-r2.sh" --object "$SECONDARY_S3_BUCKET" "$object_path" "$file" "$download_name"; then
+    if bash "$repo_root/scripts/sync-r2.sh" --object "$SECONDARY_S3_BUCKET" "$object_path" "$file" "$download_name" &&
+      secondary_verify_object_size "$object_path" "$expected_size"; then
       return 0
     else
       rc=$?
@@ -178,11 +184,32 @@ secondary_upload_object() {
   done
 }
 
+secondary_verify_object_size() {
+  local object_path="$1"
+  local expected_size="$2"
+  local actual_size
+
+  actual_size="$(
+    aws s3api head-object \
+      --bucket "$SECONDARY_S3_BUCKET" \
+      --key "$object_path" \
+      --endpoint-url "$SECONDARY_S3_ENDPOINT" \
+      --region "$region" \
+      --query ContentLength \
+      --output text
+  )"
+
+  if [[ "$actual_size" != "$expected_size" ]]; then
+    echo "Secondary S3 verification failed for $object_path: expected $expected_size bytes, got $actual_size." >&2
+    return 1
+  fi
+
+  echo "Secondary S3 verified $object_path ($actual_size bytes)."
+}
+
 secondary_upload_object "$prefix/mac-arm64" "$mac_arm64" Codex-mac-arm64.dmg
 secondary_upload_object "$prefix/mac-intel" "$mac_intel" Codex-mac-intel.dmg
 secondary_upload_object "$prefix/win" "$win_msix" Codex-Windows-x64.msix
-secondary_upload_object "$prefix/checksums" "$checksums" SHA256SUMS.txt
-secondary_upload_object "$prefix/manifest" "$manifest" release-manifest.json
 
 # Sparkle update archives, keyed to match the appcast enclosure URLs. Upload the
 # archives (full .zip + every .delta) before the appcasts so the feed never
@@ -191,6 +218,9 @@ secondary_upload_object "$prefix/mac/arm64/$mac_arm64_zip_name" "$mac_arm64_zip"
 secondary_upload_object "$prefix/mac/intel/$mac_intel_zip_name" "$mac_intel_zip" "$mac_intel_zip_name"
 upload_deltas_for_appcast "$appcast_arm64" "$mac_arm64_zip" arm64
 upload_deltas_for_appcast "$appcast_x64" "$mac_intel_zip" intel
+
+secondary_upload_object "$prefix/checksums" "$checksums" SHA256SUMS.txt
+secondary_upload_object "$prefix/manifest" "$manifest" release-manifest.json
 
 # appcast feeds change every release; keep their CDN cache short.
 R2_CACHE_CONTROL="public, max-age=600" \
