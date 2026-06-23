@@ -85,6 +85,10 @@ cat > "$tmp_dir/bin/dotnet" <<'DOTNET'
 set -euo pipefail
 
 if [[ "${1:-}" == "run" ]]; then
+  if [[ "$*" == *" arm64" ]]; then
+    echo "No matching package found for 9PLM9XGG6VKS / arm64." >&2
+    exit 1
+  fi
   printf 'OpenAI.Codex_26.608.1337.0_x64__2p2nqsd0c76g0\thttps://download.example/OpenAI.Codex_26.608.1337.0_x64__2p2nqsd0c76g0.Msix\n'
   exit 0
 fi
@@ -213,6 +217,14 @@ if [[ -n "$headers_file" ]]; then
 fi
 
 case "$url" in
+  *displaycatalog.mp.microsoft.com/v7.0/products/9PLM9XGG6VKS*)
+    cat <<'JSON'
+{"Product":{"DisplaySkuAvailabilities":[{"Sku":{"Properties":{"Packages":[
+{"PackageFamilyName":"OpenAI.Codex_2p2nqsd0c76g0","PackageFullName":"OpenAI.Codex_26.608.1337.0_x64__2p2nqsd0c76g0","Architectures":["x64"],"PackageId":"x64-package-id","ContentId":"content-id","MaxDownloadSizeInBytes":3,"HashAlgorithm":"SHA256","Hash":"x64hash"},
+{"PackageFamilyName":"OpenAI.Codex_2p2nqsd0c76g0","PackageFullName":"OpenAI.Codex_26.609.4994.0_arm64__2p2nqsd0c76g0","Architectures":["arm64"],"PackageId":"arm64-package-id","ContentId":"content-id","MaxDownloadSizeInBytes":4,"HashAlgorithm":"SHA256","Hash":"arm64hash"}
+]}}}]}}
+JSON
+    ;;
   *windows-store-update.json)
     # Advertised build (26.609.4994.0) is AHEAD of the downloadable package (608).
     printf '{"buildVersion":"26.609.4994.0","storeProductId":"9PLM9XGG6VKS","packageIdentity":"OpenAI.Codex"}\n'
@@ -258,6 +270,11 @@ fi
 manifest_windows_version="$(jq -r '.sources.windows.version' "$tmp_dir/probe-manifest.json")"
 if [[ "$manifest_windows_version" != "26.608.1337.0" ]]; then
   echo "Expected manifest windows.version 26.608.1337.0, got '$manifest_windows_version'." >&2
+  exit 1
+fi
+manifest_arm64_status="$(jq -r '.sources.windows.architectures.arm64.status' "$tmp_dir/probe-manifest.json")"
+if [[ "$manifest_arm64_status" != "catalog-only" ]]; then
+  echo "Expected manifest Windows arm64 status catalog-only, got '$manifest_arm64_status'." >&2
   exit 1
 fi
 

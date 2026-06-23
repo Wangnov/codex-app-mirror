@@ -83,6 +83,7 @@ chmod +x "$tmp_dir/bin/aws"
 printf 'arm dmg' > "$tmp_dir/artifacts/Codex-mac-arm64.dmg"
 printf 'intel dmg' > "$tmp_dir/artifacts/Codex-mac-x64.dmg"
 printf 'win msix' > "$tmp_dir/artifacts/Codex.msix"
+printf 'win arm64 msix' > "$tmp_dir/artifacts/Codex-arm64.msix"
 printf 'checksums' > "$tmp_dir/artifacts/SHA256SUMS.txt"
 printf '{"schemaVersion":2}' > "$tmp_dir/artifacts/release-manifest.json"
 printf 'arm zip' > "$tmp_dir/artifacts/Codex-darwin-arm64-1.2.3.zip"
@@ -145,7 +146,8 @@ XML
       "$tmp_dir/artifacts/Codex-darwin-arm64-1.2.3.zip" \
       "$tmp_dir/artifacts/Codex-darwin-x64-1.2.3.zip" \
       "$tmp_dir/artifacts/appcast.xml" \
-      "$tmp_dir/artifacts/appcast-x64.xml"
+      "$tmp_dir/artifacts/appcast-x64.xml" \
+      "$tmp_dir/artifacts/Codex-arm64.msix"
 )
 
 test "$(grep -c 'PUT s3://secondary-bucket/latest/mac-arm64' "$aws_log")" = "2"
@@ -154,6 +156,8 @@ grep -Fq -- '--cli-connect-timeout 7' "$aws_log"
 grep -Fq -- '--cli-read-timeout 11' "$aws_log"
 grep -Fq 'ENV AWS_MAX_ATTEMPTS=5 AWS_RETRY_MODE=standard' "$aws_log"
 grep -Fq 'PUT s3://secondary-bucket/latest/win' "$aws_log"
+grep -Fq 'PUT s3://secondary-bucket/latest/win-x64' "$aws_log"
+grep -Fq 'PUT s3://secondary-bucket/latest/win-arm64' "$aws_log"
 grep -Fq 'PUT s3://secondary-bucket/latest/mac/arm64/Codex1234-1200-arm64.delta' "$aws_log"
 grep -Fq 'PUT s3://secondary-bucket/latest/appcast.xml' "$aws_log"
 grep -Fq 'CALL s3api put-object' "$aws_log"

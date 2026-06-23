@@ -6,8 +6,8 @@ set -euo pipefail
 : "${SECONDARY_S3_ACCESS_KEY_ID:?SECONDARY_S3_ACCESS_KEY_ID must be set}"
 : "${SECONDARY_S3_SECRET_ACCESS_KEY:?SECONDARY_S3_SECRET_ACCESS_KEY must be set}"
 
-if [[ $# -ne 9 ]]; then
-  echo "Usage: sync-secondary-s3.sh <mac-arm64-dmg> <mac-intel-dmg> <windows-msix> <checksums> <manifest> <mac-arm64-zip> <mac-intel-zip> <appcast-arm64> <appcast-x64>" >&2
+if [[ $# -ne 9 && $# -ne 10 ]]; then
+  echo "Usage: sync-secondary-s3.sh <mac-arm64-dmg> <mac-intel-dmg> <windows-x64-msix> <checksums> <manifest> <mac-arm64-zip> <mac-intel-zip> <appcast-arm64> <appcast-x64> [windows-arm64-msix]" >&2
   exit 2
 fi
 
@@ -106,6 +106,7 @@ mac_arm64_zip="$6"
 mac_intel_zip="$7"
 appcast_arm64="$8"
 appcast_x64="$9"
+win_arm64_msix="${10:-}"
 
 mac_arm64_zip_name="$(basename "$mac_arm64_zip")"
 mac_intel_zip_name="$(basename "$mac_intel_zip")"
@@ -210,6 +211,10 @@ secondary_verify_object_size() {
 secondary_upload_object "$prefix/mac-arm64" "$mac_arm64" Codex-mac-arm64.dmg
 secondary_upload_object "$prefix/mac-intel" "$mac_intel" Codex-mac-intel.dmg
 secondary_upload_object "$prefix/win" "$win_msix" Codex-Windows-x64.msix
+secondary_upload_object "$prefix/win-x64" "$win_msix" Codex-Windows-x64.msix
+if [[ -n "$win_arm64_msix" ]]; then
+  secondary_upload_object "$prefix/win-arm64" "$win_arm64_msix" Codex-Windows-arm64.msix
+fi
 
 # Sparkle update archives, keyed to match the appcast enclosure URLs. Upload the
 # archives (full .zip + every .delta) before the appcasts so the feed never

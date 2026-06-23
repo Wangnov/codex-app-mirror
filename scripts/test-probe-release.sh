@@ -29,7 +29,43 @@ cat > "$tmp_dir/latest-release-manifest.json" <<JSON
     "windows": {
       "version": "1.2.3.4",
       "packageMoniker": "$package",
-      "contentLength": 3
+      "contentLength": 3,
+      "architectures": {
+        "x64": {
+          "architecture": "x64",
+          "status": "downloadable",
+          "downloadable": true,
+          "version": "1.2.3.4",
+          "packageMoniker": "$package",
+          "contentLength": 3,
+          "catalog": {
+            "packageFullName": "$package",
+            "packageId": "x64-package-id",
+            "contentId": "content-id",
+            "packageFamilyName": "OpenAI.Codex_2p2nqsd0c76g0",
+            "hashAlgorithm": "SHA256",
+            "hash": "x64hash",
+            "contentLength": 3
+          }
+        },
+        "arm64": {
+          "architecture": "arm64",
+          "status": "catalog-only",
+          "downloadable": false,
+          "version": "1.2.3.4",
+          "packageMoniker": "OpenAI.Codex_1.2.3.4_arm64__2p2nqsd0c76g0",
+          "contentLength": 4,
+          "catalog": {
+            "packageFullName": "OpenAI.Codex_1.2.3.4_arm64__2p2nqsd0c76g0",
+            "packageId": "arm64-package-id",
+            "contentId": "content-id",
+            "packageFamilyName": "OpenAI.Codex_2p2nqsd0c76g0",
+            "hashAlgorithm": "SHA256",
+            "hash": "arm64hash",
+            "contentLength": 4
+          }
+        }
+      }
     },
     "macos": {
       "arm64": {
@@ -78,7 +114,43 @@ cat > "$tmp_dir/public-manifest.json" <<JSON
     "windows": {
       "version": "1.2.3.4",
       "packageMoniker": "$package",
-      "contentLength": 3
+      "contentLength": 3,
+      "architectures": {
+        "x64": {
+          "architecture": "x64",
+          "status": "downloadable",
+          "downloadable": true,
+          "version": "1.2.3.4",
+          "packageMoniker": "$package",
+          "contentLength": 3,
+          "catalog": {
+            "packageFullName": "$package",
+            "packageId": "x64-package-id",
+            "contentId": "content-id",
+            "packageFamilyName": "OpenAI.Codex_2p2nqsd0c76g0",
+            "hashAlgorithm": "SHA256",
+            "hash": "x64hash",
+            "contentLength": 3
+          }
+        },
+        "arm64": {
+          "architecture": "arm64",
+          "status": "catalog-only",
+          "downloadable": false,
+          "version": "1.2.3.4",
+          "packageMoniker": "OpenAI.Codex_1.2.3.4_arm64__2p2nqsd0c76g0",
+          "contentLength": 4,
+          "catalog": {
+            "packageFullName": "OpenAI.Codex_1.2.3.4_arm64__2p2nqsd0c76g0",
+            "packageId": "arm64-package-id",
+            "contentId": "content-id",
+            "packageFamilyName": "OpenAI.Codex_2p2nqsd0c76g0",
+            "hashAlgorithm": "SHA256",
+            "hash": "arm64hash",
+            "contentLength": 4
+          }
+        }
+      }
     },
     "macos": {
       "arm64": {
@@ -132,6 +204,10 @@ cat > "$tmp_dir/bin/dotnet" <<'DOTNET'
 set -euo pipefail
 
 if [[ "${1:-}" == "run" ]]; then
+  if [[ "$*" == *" arm64" ]]; then
+    echo "No matching package found for 9PLM9XGG6VKS / arm64." >&2
+    exit 1
+  fi
   printf 'OpenAI.Codex_1.2.3.4_x64__2p2nqsd0c76g0\thttps://download.example/OpenAI.Codex_1.2.3.4_x64__2p2nqsd0c76g0.Msix\n'
   exit 0
 fi
@@ -281,6 +357,14 @@ if $head_request; then
 fi
 
 case "$url" in
+  *displaycatalog.mp.microsoft.com/v7.0/products/9PLM9XGG6VKS*)
+    cat <<'JSON'
+{"Product":{"DisplaySkuAvailabilities":[{"Sku":{"Properties":{"Packages":[
+{"PackageFamilyName":"OpenAI.Codex_2p2nqsd0c76g0","PackageFullName":"OpenAI.Codex_1.2.3.4_x64__2p2nqsd0c76g0","Architectures":["x64"],"PackageId":"x64-package-id","ContentId":"content-id","MaxDownloadSizeInBytes":3,"HashAlgorithm":"SHA256","Hash":"x64hash"},
+{"PackageFamilyName":"OpenAI.Codex_2p2nqsd0c76g0","PackageFullName":"OpenAI.Codex_1.2.3.4_arm64__2p2nqsd0c76g0","Architectures":["arm64"],"PackageId":"arm64-package-id","ContentId":"content-id","MaxDownloadSizeInBytes":4,"HashAlgorithm":"SHA256","Hash":"arm64hash"}
+]}}}]}}
+JSON
+    ;;
   *windows-store-update.json)
     printf '{"buildVersion":"1.2.3.4","storeProductId":"9PLM9XGG6VKS","packageIdentity":"OpenAI.Codex_2p2nqsd0c76g0"}\n'
     ;;
@@ -330,6 +414,8 @@ grep -F "should_release=true" "$tmp_dir/output.txt"
 grep -F "release_tag=$latest_tag" "$tmp_dir/output.txt"
 grep -F "latest_tag=$latest_tag" "$tmp_dir/output.txt"
 grep -F "latest release $latest_tag matches current sources, but public mirror aliases or appcasts are stale; republishing" "$tmp_dir/output.txt"
+test "$(jq -r '.sources.windows.architectures.arm64.status' "$tmp_dir/probe-manifest.json")" = "catalog-only"
+test "$(jq -r '.sources.windows.architectures.arm64.packageMoniker' "$tmp_dir/probe-manifest.json")" = "OpenAI.Codex_1.2.3.4_arm64__2p2nqsd0c76g0"
 
 if grep -F "release_tag=$predicted_tag" "$tmp_dir/output.txt"; then
   echo "probe-release.sh overwrote the latest-tag fallback with the predicted tag." >&2

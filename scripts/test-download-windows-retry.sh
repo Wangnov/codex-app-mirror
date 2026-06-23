@@ -90,7 +90,23 @@ cat > "$tmp_dir/probe-manifest.json" <<JSON
   "sources": {
     "windows": {
       "packageMoniker": "$expected_package",
-      "contentLength": 3
+      "contentLength": 3,
+      "architectures": {
+        "x64": {
+          "architecture": "x64",
+          "status": "downloadable",
+          "downloadable": true,
+          "packageMoniker": "$expected_package",
+          "contentLength": 3
+        },
+        "arm64": {
+          "architecture": "arm64",
+          "status": "catalog-only",
+          "downloadable": false,
+          "packageMoniker": "OpenAI.Codex_26.616.4196.0_arm64__2p2nqsd0c76g0",
+          "contentLength": 4
+        }
+      }
     }
   }
 }
@@ -112,6 +128,7 @@ JSON
 
 test "$(cat "$counter_path")" = "2"
 test -f "$tmp_dir/out/$expected_package.Msix"
+test ! -f "$tmp_dir/out/OpenAI.Codex_26.616.4196.0_arm64__2p2nqsd0c76g0.Msix"
 grep -F "$expected_package.Msix" "$tmp_dir/out/SHA256SUMS-windows.txt"
 
 echo "download-windows retry fixture PASS"

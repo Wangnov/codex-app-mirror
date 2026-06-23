@@ -59,11 +59,15 @@ if [[ ! -f "$macos_metadata" ]]; then
   exit 1
 fi
 
-windows_package="$(jq -r '.sources.windows.packageMoniker' "$probe_manifest")"
+windows_package="$(jq -r '.sources.windows.architectures.x64.packageMoniker // .sources.windows.packageMoniker' "$probe_manifest")"
 windows_version="$(jq -r '.sources.windows.version // empty' "$probe_manifest")"
 if [[ -z "$windows_version" || "$windows_version" == "null" ]]; then
   windows_version="$(sed -E 's/^OpenAI\.Codex_([^_]+)_.*/\1/' <<<"$windows_package")"
 fi
+windows_arm64_package="$(jq -r '.sources.windows.architectures.arm64.packageMoniker // empty' "$probe_manifest")"
+windows_arm64_version="$(jq -r '.sources.windows.architectures.arm64.version // empty' "$probe_manifest")"
+windows_arm64_status="$(jq -r '.sources.windows.architectures.arm64.status // empty' "$probe_manifest")"
+windows_arm64_downloadable="$(jq -r '.sources.windows.architectures.arm64.downloadable // false' "$probe_manifest")"
 
 mac_arm_version="$(jq -r '.macos.arm64.bundleShortVersion' "$macos_metadata")"
 mac_arm_build="$(jq -r '.macos.arm64.bundleVersion' "$macos_metadata")"
@@ -131,6 +135,9 @@ jq \
   '
   .schemaVersion = 2
   | .sources.windows.version = $windowsVersion
+  | .sources.windows.architectures.x64.version = $windowsVersion
+  | .sources.windows.architectures.x64.downloadable = true
+  | .sources.windows.architectures.x64.status = (.sources.windows.architectures.x64.status // "downloadable")
   | .sources.macos.arm64.bundleShortVersion = $mac[0].macos.arm64.bundleShortVersion
   | .sources.macos.arm64.bundleVersion = $mac[0].macos.arm64.bundleVersion
   | .sources.macos.arm64.bundleIdentifier = $mac[0].macos.arm64.bundleIdentifier
@@ -185,12 +192,22 @@ mac_x64_etag="$(jq -r '.sources.macos.x64.etag // empty' release-manifest.json)"
   echo "## 下载"
   echo
   echo "- Windows x64: \`${windows_package}.Msix\`"
+  if [[ "$windows_arm64_downloadable" == "true" && -n "$windows_arm64_package" ]]; then
+    echo "- Windows ARM64: \`${windows_arm64_package}.Msix\`"
+  fi
   echo "- macOS Apple Silicon: \`Codex-mac-arm64.dmg\`"
   echo "- macOS Intel: \`Codex-mac-x64.dmg\`"
   echo
   echo "## 版本信息"
   echo
   echo "- Windows x64 MSIX: \`${windows_version}\`"
+  if [[ -n "$windows_arm64_package" ]]; then
+    if [[ "$windows_arm64_downloadable" == "true" ]]; then
+      echo "- Windows ARM64 MSIX: \`${windows_arm64_version:-$windows_version}\`"
+    else
+      echo "- Windows ARM64 MSIX: \`${windows_arm64_version:-unknown}\`（Microsoft Store 目录已出现，下载 URL 暂未解析，状态：\`${windows_arm64_status:-catalog-only}\`）"
+    fi
+  fi
   echo "- macOS Apple Silicon: \`${mac_arm_version}\` build \`${mac_arm_build}\`"
   echo "- macOS Intel: \`${mac_x64_version}\` build \`${mac_x64_build}\`"
   if [[ -n "$mac_arm_appcast_version" || -n "$mac_x64_appcast_version" ]]; then
@@ -204,6 +221,10 @@ mac_x64_etag="$(jq -r '.sources.macos.x64.etag // empty' release-manifest.json)"
   echo "## 最新版快速下载"
   echo
   echo "- Windows: ${r2_public_base_url}/latest/win"
+  echo "- Windows x64: ${r2_public_base_url}/latest/win-x64"
+  if [[ "$windows_arm64_downloadable" == "true" && -n "$windows_arm64_package" ]]; then
+    echo "- Windows ARM64: ${r2_public_base_url}/latest/win-arm64"
+  fi
   echo "- Apple Silicon Mac: ${r2_public_base_url}/latest/mac-arm64"
   echo "- Intel Mac: ${r2_public_base_url}/latest/mac-intel"
   echo "- 校验和: ${r2_public_base_url}/latest/checksums"
@@ -233,12 +254,22 @@ mac_x64_etag="$(jq -r '.sources.macos.x64.etag // empty' release-manifest.json)"
   echo "## Downloads"
   echo
   echo "- Windows x64: \`${windows_package}.Msix\`"
+  if [[ "$windows_arm64_downloadable" == "true" && -n "$windows_arm64_package" ]]; then
+    echo "- Windows ARM64: \`${windows_arm64_package}.Msix\`"
+  fi
   echo "- macOS Apple Silicon: \`Codex-mac-arm64.dmg\`"
   echo "- macOS Intel: \`Codex-mac-x64.dmg\`"
   echo
   echo "## Version details"
   echo
   echo "- Windows x64 MSIX: \`${windows_version}\`"
+  if [[ -n "$windows_arm64_package" ]]; then
+    if [[ "$windows_arm64_downloadable" == "true" ]]; then
+      echo "- Windows ARM64 MSIX: \`${windows_arm64_version:-$windows_version}\`"
+    else
+      echo "- Windows ARM64 MSIX: \`${windows_arm64_version:-unknown}\` (present in Microsoft Store catalog, download URL unresolved, status: \`${windows_arm64_status:-catalog-only}\`)"
+    fi
+  fi
   echo "- macOS Apple Silicon: \`${mac_arm_version}\` build \`${mac_arm_build}\`"
   echo "- macOS Intel: \`${mac_x64_version}\` build \`${mac_x64_build}\`"
   if [[ -n "$mac_arm_appcast_version" || -n "$mac_x64_appcast_version" ]]; then
@@ -252,6 +283,10 @@ mac_x64_etag="$(jq -r '.sources.macos.x64.etag // empty' release-manifest.json)"
   echo "## Latest quick downloads"
   echo
   echo "- Windows: ${r2_public_base_url}/latest/win"
+  echo "- Windows x64: ${r2_public_base_url}/latest/win-x64"
+  if [[ "$windows_arm64_downloadable" == "true" && -n "$windows_arm64_package" ]]; then
+    echo "- Windows ARM64: ${r2_public_base_url}/latest/win-arm64"
+  fi
   echo "- Apple Silicon Mac: ${r2_public_base_url}/latest/mac-arm64"
   echo "- Intel Mac: ${r2_public_base_url}/latest/mac-intel"
   echo "- Checksums: ${r2_public_base_url}/latest/checksums"

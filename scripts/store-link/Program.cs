@@ -14,7 +14,6 @@ internal static class Program
     private const string Fe3Host = "fe3.delivery.mp.microsoft.com";
     private const string Fe3Endpoint = "https://fe3.delivery.mp.microsoft.com/ClientWebService/client.asmx";
     private const string Fe3SecuredEndpoint = "https://fe3.delivery.mp.microsoft.com/ClientWebService/client.asmx/secured";
-    private const string WindowsDesktopDeviceAttributes = "OSArchitecture=AMD64;DeviceFamily=Windows.Desktop;App=WU;AppVer=10.0.22621.1;OSVersion=10.0.22621.1;InstallationType=Client;IsDeviceRetailDemo=0;";
     // X509Certificate2.Thumbprint is SHA-1. This pins the Microsoft Update
     // Secure Server CA 2.1 intermediate that signs FE3 delivery certificates.
     private const string MicrosoftUpdateSecureServerCa21Sha1Thumbprint =
@@ -106,7 +105,8 @@ internal static class Program
         {
             var wuCategoryId = await ResolveWuCategoryIdAsync(httpClient, productId);
             var cookie = await GetCookieAsync(httpClient);
-            var syncXml = await SyncUpdatesAsync(httpClient, cookie, wuCategoryId);
+            var deviceAttributes = WindowsDesktopDeviceAttributesFor(architecture);
+            var syncXml = await SyncUpdatesAsync(httpClient, cookie, wuCategoryId, deviceAttributes);
             var candidates = ParsePackageCandidates(syncXml);
             var package = candidates
                 .Where(p => p.PackageMoniker.StartsWith(ProductPrefix, StringComparison.OrdinalIgnoreCase))
@@ -125,7 +125,11 @@ internal static class Program
                 return 1;
             }
 
-            var packageUrl = await GetPackageUrlAsync(httpClient, package.UpdateId, package.RevisionNumber);
+            var packageUrl = await GetPackageUrlAsync(
+                httpClient,
+                package.UpdateId,
+                package.RevisionNumber,
+                deviceAttributes);
             Console.WriteLine($"{package.PackageMoniker}\t{packageUrl}");
             return 0;
         }
@@ -229,7 +233,11 @@ internal static class Program
         return encryptedData;
     }
 
-    private static async Task<string> SyncUpdatesAsync(HttpClient httpClient, string cookie, string wuCategoryId)
+    private static async Task<string> SyncUpdatesAsync(
+        HttpClient httpClient,
+        string cookie,
+        string wuCategoryId,
+        string deviceAttributes)
     {
         var installedIds = string.Join("", WindowsDesktopBaselineInstalledUpdateIds.Select(id => $"<int>{id}</int>"));
         var body = $"""
@@ -266,7 +274,7 @@ internal static class Program
                 </ClientPreferredLanguages>
                 <ProductsParameters>
                   <SyncCurrentVersionOnly>false</SyncCurrentVersionOnly>
-                  <DeviceAttributes>{WindowsDesktopDeviceAttributes}</DeviceAttributes>
+                  <DeviceAttributes>{XmlEscape(deviceAttributes)}</DeviceAttributes>
                   <CallerAttributes>Interactive=1;IsSeeker=0;</CallerAttributes>
                   <Products />
                 </ProductsParameters>
@@ -337,7 +345,11 @@ internal static class Program
         return candidates;
     }
 
-    private static async Task<string> GetPackageUrlAsync(HttpClient httpClient, string updateId, string revisionNumber)
+    private static async Task<string> GetPackageUrlAsync(
+        HttpClient httpClient,
+        string updateId,
+        string revisionNumber,
+        string deviceAttributes)
     {
         var body = $"""
             <GetExtendedUpdateInfo2 xmlns="http://www.microsoft.com/SoftwareDistribution/Server/ClientWebService">
@@ -351,7 +363,7 @@ internal static class Program
                 <XmlUpdateFragmentType>FileUrl</XmlUpdateFragmentType>
                 <XmlUpdateFragmentType>FileDecryption</XmlUpdateFragmentType>
               </infoTypes>
-              <deviceAttributes>{WindowsDesktopDeviceAttributes}</deviceAttributes>
+              <deviceAttributes>{XmlEscape(deviceAttributes)}</deviceAttributes>
             </GetExtendedUpdateInfo2>
             """;
         var soap = BuildSoapEnvelope(
@@ -540,6 +552,14 @@ internal static class Program
             "amd64" => "x64",
             var value => value,
         };
+    }
+
+    private static string WindowsDesktopDeviceAttributesFor(string architecture)
+    {
+        var osArchitecture = architecture.Equals("arm64", StringComparison.OrdinalIgnoreCase)
+            ? "ARM64"
+            : "AMD64";
+        return $"OSArchitecture={osArchitecture};DeviceFamily=Windows.Desktop;App=WU;AppVer=10.0.22621.1;OSVersion=10.0.22621.1;InstallationType=Client;IsDeviceRetailDemo=0;";
     }
 
     private static string FormatSoapDate(DateTimeOffset value)

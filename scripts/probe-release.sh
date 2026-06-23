@@ -3,6 +3,7 @@ set -euo pipefail
 
 product_id="9PLM9XGG6VKS"
 architecture="x64"
+windows_display_catalog_url="https://displaycatalog.mp.microsoft.com/v7.0/products/${product_id}?market=US&languages=en-US,en,neutral"
 arm_appcast_url="https://persistent.oaistatic.com/codex-app-prod/appcast.xml"
 x64_appcast_url="https://persistent.oaistatic.com/codex-app-prod/appcast-x64.xml"
 windows_update_manifest_url="https://persistent.oaistatic.com/codex-app-prod/windows-store-update.json"
@@ -408,7 +409,35 @@ manifest_key() {
     windows: {
       version: .sources.windows.version,
       packageMoniker: .sources.windows.packageMoniker,
-      contentLength: .sources.windows.contentLength
+      contentLength: .sources.windows.contentLength,
+      architectures: (
+        .sources.windows.architectures // {
+          x64: {
+            status: "downloadable",
+            downloadable: true,
+            version: .sources.windows.version,
+            packageMoniker: .sources.windows.packageMoniker,
+            contentLength: .sources.windows.contentLength
+          }
+        }
+        | with_entries(
+            .value |= {
+              status: (.status // ""),
+              downloadable: (.downloadable // false),
+              version: (.version // ""),
+              packageMoniker: (.packageMoniker // ""),
+              contentLength: (.contentLength // 0),
+              catalog: {
+                packageFullName: (.catalog.packageFullName // ""),
+                packageId: (.catalog.packageId // ""),
+                contentId: (.catalog.contentId // ""),
+                hashAlgorithm: (.catalog.hashAlgorithm // ""),
+                hash: (.catalog.hash // ""),
+                contentLength: (.catalog.contentLength // 0)
+              }
+            }
+          )
+      )
     },
     macos: {
       arm64: {
@@ -573,6 +602,18 @@ public_mirror_objects_match() {
     "latest/win" \
     "$(jq -r '.sources.windows.contentLength // 0' "$manifest")" &&
   public_mirror_object_size_matches \
+    "public mirror Windows x64 alias" \
+    "latest/win-x64" \
+    "$(jq -r '.sources.windows.architectures.x64.contentLength // .sources.windows.contentLength // 0' "$manifest")" &&
+  if jq -e '.sources.windows.architectures.arm64.downloadable == true' "$manifest" >/dev/null; then
+    public_mirror_object_size_matches \
+      "public mirror Windows arm64 alias" \
+      "latest/win-arm64" \
+      "$(jq -r '.sources.windows.architectures.arm64.contentLength // 0' "$manifest")"
+  else
+    true
+  fi &&
+  public_mirror_object_size_matches \
     "public mirror macOS arm64 DMG alias" \
     "latest/mac-arm64" \
     "$(jq -r '.sources.macos.arm64.contentLength // 0' "$manifest")" &&
@@ -621,13 +662,14 @@ require jq
 require python3
 
 resolve_store_link() {
+  local desired_arch="$1"
+  local max_attempts="$2"
+  local delay="$3"
   local attempt
-  local max_attempts="${STORE_LINK_MAX_ATTEMPTS:-3}"
-  local delay="${STORE_LINK_RETRY_DELAY_SECONDS:-10}"
 
   for ((attempt = 1; attempt <= max_attempts; attempt++)); do
-    echo "Resolving Microsoft Store package link (attempt $attempt/$max_attempts)" >&2
-    if dotnet run --project scripts/store-link -- "$product_id" "$architecture"; then
+    echo "Resolving Microsoft Store $desired_arch package link (attempt $attempt/$max_attempts)" >&2
+    if dotnet run --project scripts/store-link -- "$product_id" "$desired_arch"; then
       return 0
     fi
 
@@ -643,7 +685,35 @@ resolve_store_link() {
   return 1
 }
 
-link_line="$(resolve_store_link |
+package_version() {
+  sed -E 's/^OpenAI\.Codex_([^_]+)_.*/\1/' <<<"$1"
+}
+
+catalog_package_for_arch() {
+  local arch="$1"
+  jq -c --arg arch "$arch" '
+    [
+      .Product.DisplaySkuAvailabilities[].Sku.Properties.Packages[]?
+      | select((.PackageFamilyName // "") == "OpenAI.Codex_2p2nqsd0c76g0")
+      | select(((.Architectures // []) | map(ascii_downcase) | index($arch)) != null)
+    ]
+    | unique_by(.PackageFullName)
+    | sort_by(.PackageFullName)
+    | last // {}
+  ' <<<"$windows_catalog_json"
+}
+
+catalog_field() {
+  local catalog_json="$1"
+  local field="$2"
+  jq -r --arg field "$field" '.[$field] // empty' <<<"$catalog_json"
+}
+
+windows_catalog_json="$(curl_get "Windows DisplayCatalog" "$windows_display_catalog_url")"
+windows_x64_catalog="$(catalog_package_for_arch x64)"
+windows_arm64_catalog="$(catalog_package_for_arch arm64)"
+
+link_line="$(resolve_store_link "$architecture" "${STORE_LINK_MAX_ATTEMPTS:-3}" "${STORE_LINK_RETRY_DELAY_SECONDS:-10}" |
   awk '/^OpenAI\.Codex_/ { print; exit }')"
 
 if [[ -z "$link_line" ]]; then
@@ -653,7 +723,7 @@ fi
 
 windows_package="${link_line%%$'\t'*}"
 windows_url="${link_line#*$'\t'}"
-windows_version="$(sed -E 's/^OpenAI\.Codex_([^_]+)_.*/\1/' <<<"$windows_package")"
+windows_version="$(package_version "$windows_package")"
 windows_update_json="$(curl_get "Windows update manifest" "$windows_update_manifest_url")"
 windows_update_version="$(jq -r '.buildVersion // empty' <<<"$windows_update_json")"
 windows_update_product_id="$(jq -r '.storeProductId // empty' <<<"$windows_update_json")"
@@ -662,6 +732,43 @@ windows_headers="$(curl_head "Windows MSIX" "$windows_url")"
 windows_content_length="$(header_value "$windows_headers" "content-length")"
 windows_last_modified="$(header_value "$windows_headers" "last-modified")"
 windows_etag="$(header_value "$windows_headers" "etag")"
+
+windows_arm64_package="$(catalog_field "$windows_arm64_catalog" PackageFullName)"
+windows_arm64_version=""
+windows_arm64_url_host=""
+windows_arm64_content_length="$(catalog_field "$windows_arm64_catalog" MaxDownloadSizeInBytes)"
+windows_arm64_last_modified=""
+windows_arm64_etag=""
+windows_arm64_status="catalog-only"
+windows_arm64_downloadable=false
+
+if [[ -n "$windows_arm64_package" ]]; then
+  windows_arm64_version="$(package_version "$windows_arm64_package")"
+fi
+
+windows_arm64_link_output=""
+if windows_arm64_link_output="$(resolve_store_link arm64 "${STORE_LINK_OPTIONAL_MAX_ATTEMPTS:-1}" "${STORE_LINK_OPTIONAL_RETRY_DELAY_SECONDS:-0}")"; then
+  windows_arm64_link_line="$(awk '/^OpenAI\.Codex_/ { print; exit }' <<<"$windows_arm64_link_output")"
+  if [[ -n "$windows_arm64_link_line" ]]; then
+    windows_arm64_package="${windows_arm64_link_line%%$'\t'*}"
+    windows_arm64_url="${windows_arm64_link_line#*$'\t'}"
+    windows_arm64_version="$(package_version "$windows_arm64_package")"
+    windows_arm64_headers="$(curl_head "Windows arm64 MSIX" "$windows_arm64_url")"
+    windows_arm64_content_length="$(header_value "$windows_arm64_headers" "content-length")"
+    windows_arm64_last_modified="$(header_value "$windows_arm64_headers" "last-modified")"
+    windows_arm64_etag="$(header_value "$windows_arm64_headers" "etag")"
+    windows_arm64_url_host="$(printf '%s' "$windows_arm64_url" | sed -E 's#^(https?://[^/]+).*#\1#')"
+    windows_arm64_status="downloadable"
+    windows_arm64_downloadable=true
+  fi
+else
+  echo "Windows arm64 Store package link is not downloadable yet; recording catalog metadata only." >&2
+fi
+
+windows_x64_catalog_package="$(catalog_field "$windows_x64_catalog" PackageFullName)"
+if [[ -n "$windows_x64_catalog_package" && "$windows_x64_catalog_package" != "$windows_package" ]]; then
+  echo "Windows x64 DisplayCatalog package ($windows_x64_catalog_package) differs from FE3 downloadable package ($windows_package); using downloadable package." >&2
+fi
 
 arm_appcast_json="$(appcast_latest "macOS arm64 appcast" "$arm_appcast_url")"
 x64_appcast_json="$(appcast_latest "macOS x64 appcast" "$x64_appcast_url")"
@@ -695,6 +802,16 @@ jq -n \
   --arg windowsVersion "$windows_version" \
   --arg windowsPackage "$windows_package" \
   --arg windowsUrlHost "$(printf '%s' "$windows_url" | sed -E 's#^(https?://[^/]+).*#\1#')" \
+  --argjson windowsX64Catalog "$windows_x64_catalog" \
+  --arg windowsArm64Version "$windows_arm64_version" \
+  --arg windowsArm64Package "$windows_arm64_package" \
+  --arg windowsArm64UrlHost "$windows_arm64_url_host" \
+  --arg windowsArm64Status "$windows_arm64_status" \
+  --argjson windowsArm64Downloadable "$windows_arm64_downloadable" \
+  --argjson windowsArm64Catalog "$windows_arm64_catalog" \
+  --argjson windowsArm64ContentLength "$(json_number "$windows_arm64_content_length")" \
+  --arg windowsArm64LastModified "$windows_arm64_last_modified" \
+  --arg windowsArm64Etag "$windows_arm64_etag" \
   --arg windowsUpdateManifestUrl "$windows_update_manifest_url" \
   --arg windowsUpdateVersion "$windows_update_version" \
   --arg windowsUpdateProductId "$windows_update_product_id" \
@@ -732,7 +849,49 @@ jq -n \
         },
         contentLength: $windowsContentLength,
         lastModified: $windowsLastModified,
-        etag: $windowsEtag
+        etag: $windowsEtag,
+        architectures: {
+          x64: {
+            architecture: "x64",
+            status: "downloadable",
+            downloadable: true,
+            version: $windowsVersion,
+            packageMoniker: $windowsPackage,
+            urlHost: $windowsUrlHost,
+            contentLength: $windowsContentLength,
+            lastModified: $windowsLastModified,
+            etag: $windowsEtag,
+            catalog: {
+              packageFullName: ($windowsX64Catalog.PackageFullName // ""),
+              packageId: ($windowsX64Catalog.PackageId // ""),
+              contentId: ($windowsX64Catalog.ContentId // ""),
+              packageFamilyName: ($windowsX64Catalog.PackageFamilyName // ""),
+              hashAlgorithm: ($windowsX64Catalog.HashAlgorithm // ""),
+              hash: ($windowsX64Catalog.Hash // ""),
+              contentLength: ($windowsX64Catalog.MaxDownloadSizeInBytes // 0)
+            }
+          },
+          arm64: {
+            architecture: "arm64",
+            status: $windowsArm64Status,
+            downloadable: $windowsArm64Downloadable,
+            version: $windowsArm64Version,
+            packageMoniker: $windowsArm64Package,
+            urlHost: $windowsArm64UrlHost,
+            contentLength: $windowsArm64ContentLength,
+            lastModified: $windowsArm64LastModified,
+            etag: $windowsArm64Etag,
+            catalog: {
+              packageFullName: ($windowsArm64Catalog.PackageFullName // ""),
+              packageId: ($windowsArm64Catalog.PackageId // ""),
+              contentId: ($windowsArm64Catalog.ContentId // ""),
+              packageFamilyName: ($windowsArm64Catalog.PackageFamilyName // ""),
+              hashAlgorithm: ($windowsArm64Catalog.HashAlgorithm // ""),
+              hash: ($windowsArm64Catalog.Hash // ""),
+              contentLength: ($windowsArm64Catalog.MaxDownloadSizeInBytes // 0)
+            }
+          }
+        }
       },
       macos: {
         arm64: {
@@ -798,9 +957,14 @@ else
     else
       assets_json="$(release_assets_json "$latest_tag")"
       windows_asset_size="$(asset_size "$assets_json" "$windows_package.Msix")"
+      windows_arm64_asset_size=""
+      if jq -e '.sources.windows.architectures.arm64.downloadable == true' "$manifest_path" >/dev/null; then
+        windows_arm64_asset_size="$(asset_size "$assets_json" "$windows_arm64_package.Msix")"
+      fi
       arm_asset_size="$(asset_size "$assets_json" "Codex-mac-arm64.dmg")"
       x64_asset_size="$(asset_size "$assets_json" "Codex-mac-x64.dmg")"
       if [[ "$windows_asset_size" == "$windows_content_length" &&
+            ( "$windows_arm64_downloadable" != "true" || "$windows_arm64_asset_size" == "$windows_arm64_content_length" ) &&
             "$arm_asset_size" == "$arm_content_length" &&
             "$x64_asset_size" == "$x64_content_length" ]]; then
         if public_mirror_latest_matches "$manifest_path" "$latest_tag"; then
@@ -847,7 +1011,7 @@ if [[ -n "$release_tag" ]]; then
   validate_release_tag "$release_tag"
 fi
 
-version_summary="windows=$windows_version ($windows_package; updateManifest=$windows_update_version); mac-arm64=$arm_appcast_version-b$arm_appcast_build/$arm_etag/$arm_content_length; mac-x64=$x64_appcast_version-b$x64_appcast_build/$x64_etag/$x64_content_length"
+version_summary="windows-x64=$windows_version ($windows_package; updateManifest=$windows_update_version); windows-arm64=${windows_arm64_status}:${windows_arm64_version:-none} (${windows_arm64_package:-none}); mac-arm64=$arm_appcast_version-b$arm_appcast_build/$arm_etag/$arm_content_length; mac-x64=$x64_appcast_version-b$x64_appcast_build/$x64_etag/$x64_content_length"
 
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   {

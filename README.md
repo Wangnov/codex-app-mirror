@@ -65,7 +65,7 @@
 
 | 能力 | 说明 |
 |---|---|
-| 🪟 **Windows MSIX** | 直接镜像 Microsoft Store 包，绕开 `winget` / Entra ID 认证 |
+| 🪟 **Windows MSIX** | 直接镜像 Microsoft Store 包，x64 稳定发布，ARM64 纳入 manifest 与镜像路径 |
 | 🍎 **macOS DMG** | Apple Silicon + Intel 双架构，官方原包，零改动 |
 | 🔄 **增量自动更新** | macOS Sparkle appcast + delta 差量包，pinned EdDSA 签名字节级保真 |
 | 🌏 **国内可达** | Cloudflare R2 全球节点 + 中国大陆自动分流到 S3 副镜像，同一条短链全自动选路 |
@@ -76,7 +76,8 @@
 
 打开 [最新 GitHub Release](https://github.com/Wangnov/codex-app-mirror/releases/latest)，下载你的平台对应文件：
 
-- **Windows**：`OpenAI.Codex_..._x64__2p2nqsd0c76g0.Msix`
+- **Windows x64**：`OpenAI.Codex_..._x64__2p2nqsd0c76g0.Msix`
+- **Windows ARM64**：`OpenAI.Codex_..._arm64__2p2nqsd0c76g0.Msix`（当官方下载 URL 已解析时发布）
 - **Apple Silicon Mac**：`Codex-mac-arm64.dmg`
 - **Intel Mac**：`Codex-mac-x64.dmg`
 
@@ -84,7 +85,9 @@
 
 | 平台 | 短链 |
 |---|---|
-| Windows | <https://codexapp.agentsmirror.com/latest/win> |
+| Windows x64（兼容别名） | <https://codexapp.agentsmirror.com/latest/win> |
+| Windows x64 | <https://codexapp.agentsmirror.com/latest/win-x64> |
+| Windows ARM64 | <https://codexapp.agentsmirror.com/latest/win-arm64> |
 | Apple Silicon Mac | <https://codexapp.agentsmirror.com/latest/mac-arm64> |
 | Intel Mac | <https://codexapp.agentsmirror.com/latest/mac-intel> |
 | 校验和 | <https://codexapp.agentsmirror.com/latest/checksums> |
@@ -107,11 +110,11 @@ macOS 版除了手动下载 DMG，还支持 **Sparkle 增量自动更新**。下
 
 每次运行先做一次轻量探测，只有上游真的变了才下载和发版：
 
-- **Windows**：通过 Microsoft Store DisplayCatalog 拿到 `WuCategoryId`，再用 FE3 metadata 解析当前 MSIX moniker 和临时 Microsoft CDN URL
+- **Windows**：通过 Microsoft Store DisplayCatalog 探测 x64 / ARM64 包元数据，再用 FE3 metadata 解析可下载 MSIX moniker 和临时 Microsoft CDN URL；ARM64 若暂未解析到 URL，会以 `catalog-only` 状态记录在 manifest
 - **macOS**：对官方 DMG 与 appcast 发请求，读取 `ETag` / `Last-Modified` / `Content-Length` 与 appcast 版本字段
 - **比对**：与最新 Release 的 `release-manifest.json` 做稳定字段比较
 
-没有变化就在探测阶段结束，不下载、不发重复 Release。任一平台有变化，则下载三平台安装包、生成校验和与 manifest、构建 Sparkle appcast，发布新的 GitHub Release。
+没有变化就在探测阶段结束，不下载、不发重复 Release。任一平台有变化，则下载所有可下载的安装包、生成校验和与 manifest、构建 Sparkle appcast，发布新的 GitHub Release。
 
 ### 双层镜像 + 按地域分流
 
@@ -149,6 +152,7 @@ codex-app-win-26.513.3673.0-mac-26.513.31313-b2867
 
 ```text
 OpenAI.Codex_<version>_x64__2p2nqsd0c76g0.Msix
+OpenAI.Codex_<version>_arm64__2p2nqsd0c76g0.Msix
 ```
 
 ## Windows 提示「已被系统管理员阻止」怎么办
@@ -218,7 +222,7 @@ Windows MSIX 使用 Microsoft Store metadata 解析：
 
 | Capability | Detail |
 |---|---|
-| 🪟 **Windows MSIX** | Mirrored from the Microsoft Store package — no `winget` / Entra ID needed |
+| 🪟 **Windows MSIX** | Mirrored from the Microsoft Store package: x64 is published, ARM64 is tracked in the manifest and mirror paths |
 | 🍎 **macOS DMG** | Apple Silicon + Intel, official packages, unmodified |
 | 🔄 **Incremental auto-update** | macOS Sparkle appcast + delta enclosures, pinned EdDSA signatures kept byte-for-byte |
 | 🌏 **Reachable in China** | Cloudflare R2 globally + auto-failover to an S3 mirror for mainland China; one link, auto-routed |
@@ -229,7 +233,8 @@ Windows MSIX 使用 Microsoft Store metadata 解析：
 
 Open the [latest GitHub Release](https://github.com/Wangnov/codex-app-mirror/releases/latest) and grab your platform's asset:
 
-- **Windows**: `OpenAI.Codex_..._x64__2p2nqsd0c76g0.Msix`
+- **Windows x64**: `OpenAI.Codex_..._x64__2p2nqsd0c76g0.Msix`
+- **Windows ARM64**: `OpenAI.Codex_..._arm64__2p2nqsd0c76g0.Msix` (published when the official download URL resolves)
 - **Apple Silicon Mac**: `Codex-mac-arm64.dmg`
 - **Intel Mac**: `Codex-mac-x64.dmg`
 
@@ -237,7 +242,9 @@ Or use the CDN short links (recommended — **auto-routed to the fastest node**:
 
 | Platform | Short link |
 |---|---|
-| Windows | <https://codexapp.agentsmirror.com/latest/win> |
+| Windows x64 (compat alias) | <https://codexapp.agentsmirror.com/latest/win> |
+| Windows x64 | <https://codexapp.agentsmirror.com/latest/win-x64> |
+| Windows ARM64 | <https://codexapp.agentsmirror.com/latest/win-arm64> |
 | Apple Silicon Mac | <https://codexapp.agentsmirror.com/latest/mac-arm64> |
 | Intel Mac | <https://codexapp.agentsmirror.com/latest/mac-intel> |
 | Checksums | <https://codexapp.agentsmirror.com/latest/checksums> |
@@ -260,11 +267,11 @@ The mirror copies the official Sparkle archives and OpenAI's EdDSA signatures **
 
 Each run starts with a lightweight probe and only downloads/releases when upstream actually changed:
 
-- **Windows**: query Microsoft Store DisplayCatalog for ProductId `9PLM9XGG6VKS`, then resolve the current MSIX moniker + temporary Microsoft CDN URL via FE3 metadata
+- **Windows**: query Microsoft Store DisplayCatalog for x64 / ARM64 package metadata, then resolve downloadable MSIX monikers + temporary Microsoft CDN URLs via FE3 metadata; ARM64 is recorded as `catalog-only` until its URL resolves
 - **macOS**: request the official DMGs and appcast, read `ETag` / `Last-Modified` / `Content-Length` and appcast version fields
 - **Compare**: diff those stable fields against the latest release's `release-manifest.json`
 
-No change → it stops after the probe. Any platform changes → it downloads all three installers, writes checksums + manifest, builds the Sparkle appcasts, and publishes a new GitHub Release.
+No change → it stops after the probe. Any platform changes → it downloads every downloadable installer, writes checksums + manifest, builds the Sparkle appcasts, and publishes a new GitHub Release.
 
 ### Two-tier mirror + geo routing
 

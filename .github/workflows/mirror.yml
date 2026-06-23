@@ -288,11 +288,12 @@ jobs:
           set -euo pipefail
           mac_arm64="artifacts/codex-macos/Codex-mac-arm64.dmg"
           mac_intel="artifacts/codex-macos/Codex-mac-x64.dmg"
-          win_msix="$(find artifacts/codex-windows -maxdepth 1 -type f \( -name '*.Msix' -o -name '*.msix' \) | sort | head -n 1)"
+          win_x64_msix="$(find artifacts/codex-windows -maxdepth 1 -type f \( -name '*_x64__*.Msix' -o -name '*_x64__*.msix' \) | sort | head -n 1)"
+          win_arm64_msix="$(find artifacts/codex-windows -maxdepth 1 -type f \( -name '*_arm64__*.Msix' -o -name '*_arm64__*.msix' \) | sort | head -n 1 || true)"
 
           test -f "$mac_arm64"
           test -f "$mac_intel"
-          test -f "$win_msix"
+          test -f "$win_x64_msix"
 
           # Sparkle update archives the generated appcasts point at. Their object
           # keys (latest/mac/{arm64,intel}/...) must match the enclosure URLs that
@@ -333,7 +334,11 @@ jobs:
             local prefix="$1"
             bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/mac-arm64" "$mac_arm64" Codex-mac-arm64.dmg
             bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/mac-intel" "$mac_intel" Codex-mac-intel.dmg
-            bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/win" "$win_msix" Codex-Windows-x64.msix
+            bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/win" "$win_x64_msix" Codex-Windows-x64.msix
+            bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/win-x64" "$win_x64_msix" Codex-Windows-x64.msix
+            if [[ -n "$win_arm64_msix" && -f "$win_arm64_msix" ]]; then
+              bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/win-arm64" "$win_arm64_msix" Codex-Windows-arm64.msix
+            fi
             bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/checksums" SHA256SUMS.txt SHA256SUMS.txt
             bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/manifest" release-manifest.json release-manifest.json
           }
@@ -356,7 +361,11 @@ jobs:
 
           bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/mac-arm64 "$mac_arm64" Codex-mac-arm64.dmg
           bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/mac-intel "$mac_intel" Codex-mac-intel.dmg
-          bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/win "$win_msix" Codex-Windows-x64.msix
+          bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/win "$win_x64_msix" Codex-Windows-x64.msix
+          bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/win-x64 "$win_x64_msix" Codex-Windows-x64.msix
+          if [[ -n "$win_arm64_msix" && -f "$win_arm64_msix" ]]; then
+            bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/win-arm64 "$win_arm64_msix" Codex-Windows-arm64.msix
+          fi
           bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/checksums SHA256SUMS.txt SHA256SUMS.txt
           bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/manifest release-manifest.json release-manifest.json
 
@@ -453,7 +462,8 @@ jobs:
 
           mac_arm64="artifacts/codex-macos/Codex-mac-arm64.dmg"
           mac_intel="artifacts/codex-macos/Codex-mac-x64.dmg"
-          win_msix="$(find artifacts/codex-windows -maxdepth 1 -type f \( -name '*.Msix' -o -name '*.msix' \) | sort | head -n 1)"
+          win_x64_msix="$(find artifacts/codex-windows -maxdepth 1 -type f \( -name '*_x64__*.Msix' -o -name '*_x64__*.msix' \) | sort | head -n 1)"
+          win_arm64_msix="$(find artifacts/codex-windows -maxdepth 1 -type f \( -name '*_arm64__*.Msix' -o -name '*_arm64__*.msix' \) | sort | head -n 1 || true)"
 
           arm_short_version="$(jq -r '.sources.macos.arm64.appcast.shortVersionString' release-manifest.json)"
           x64_short_version="$(jq -r '.sources.macos.x64.appcast.shortVersionString' release-manifest.json)"
@@ -462,22 +472,29 @@ jobs:
 
           test -f "$mac_arm64"
           test -f "$mac_intel"
-          test -f "$win_msix"
+          test -f "$win_x64_msix"
           test -f "$mac_arm64_zip"
           test -f "$mac_intel_zip"
           test -f appcast.xml
           test -f appcast-x64.xml
 
-          bash scripts/sync-secondary-s3.sh \
-            "$mac_arm64" \
-            "$mac_intel" \
-            "$win_msix" \
-            SHA256SUMS.txt \
-            release-manifest.json \
-            "$mac_arm64_zip" \
-            "$mac_intel_zip" \
-            appcast.xml \
+          secondary_args=(
+            "$mac_arm64"
+            "$mac_intel"
+            "$win_x64_msix"
+            SHA256SUMS.txt
+            release-manifest.json
+            "$mac_arm64_zip"
+            "$mac_intel_zip"
+            appcast.xml
             appcast-x64.xml
+          )
+          if [[ -n "$win_arm64_msix" && -f "$win_arm64_msix" ]]; then
+            secondary_args+=("$win_arm64_msix")
+          fi
+
+          bash scripts/sync-secondary-s3.sh \
+            "${secondary_args[@]}"
 
           tmp_config="$(mktemp)"
           cleanup() {

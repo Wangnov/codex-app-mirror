@@ -19,8 +19,7 @@ New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
 dotnet --info
 
-$expectedPackageMoniker = $null
-$expectedContentLength = $null
+$windowsPackages = @()
 
 if ($ManifestPath) {
   if (-not (Test-Path -LiteralPath $ManifestPath)) {
@@ -28,25 +27,54 @@ if ($ManifestPath) {
   }
 
   $manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
-  $expectedPackageMoniker = $manifest.sources.windows.packageMoniker
-  $expectedContentLength = [int64] $manifest.sources.windows.contentLength
+  $architectures = $manifest.sources.windows.architectures
+  if ($architectures) {
+    foreach ($property in $architectures.PSObject.Properties) {
+      $entry = $property.Value
+      if ($entry.downloadable -eq $true) {
+        if (-not $entry.packageMoniker) {
+          throw "Probe manifest has downloadable Windows $($property.Name) entry without packageMoniker."
+        }
+        $windowsPackages += [pscustomobject]@{
+          Architecture = $property.Name
+          ExpectedPackageMoniker = $entry.packageMoniker
+          ExpectedContentLength = [int64] ($entry.contentLength ?? 0)
+        }
+      }
+    }
+  }
 
-  if (-not $expectedPackageMoniker) {
+  if ($windowsPackages.Count -eq 0 -and $manifest.sources.windows.packageMoniker) {
+    $windowsPackages += [pscustomobject]@{
+      Architecture = "x64"
+      ExpectedPackageMoniker = $manifest.sources.windows.packageMoniker
+      ExpectedContentLength = [int64] ($manifest.sources.windows.contentLength ?? 0)
+    }
+  }
+
+  if ($windowsPackages.Count -eq 0) {
     throw "Probe manifest is missing sources.windows.packageMoniker"
+  }
+} else {
+  $windowsPackages += [pscustomobject]@{
+    Architecture = "x64"
+    ExpectedPackageMoniker = $null
+    ExpectedContentLength = 0
   }
 }
 
 function Resolve-StorePackageLink {
   param(
+    [string] $Architecture,
     [string] $ExpectedPackageMoniker
   )
 
   $lastError = "No Microsoft Store package link was resolved."
 
   for ($attempt = 1; $attempt -le $StoreLinkMaxAttempts; $attempt++) {
-    Write-Host "Resolving Microsoft Store package link (attempt $attempt/$StoreLinkMaxAttempts)"
+    Write-Host "Resolving Microsoft Store $Architecture package link (attempt $attempt/$StoreLinkMaxAttempts)"
 
-    $resolverOutput = & dotnet run --project scripts/store-link -- 9PLM9XGG6VKS x64
+    $resolverOutput = & dotnet run --project scripts/store-link -- 9PLM9XGG6VKS $Architecture
     if ($LASTEXITCODE -ne 0) {
       $lastError = "Microsoft Store resolver failed with exit code $LASTEXITCODE."
     } else {
@@ -87,27 +115,34 @@ function Resolve-StorePackageLink {
   throw $lastError
 }
 
-$resolvedPackage = Resolve-StorePackageLink -ExpectedPackageMoniker $expectedPackageMoniker
-$packageMoniker = $resolvedPackage.PackageMoniker
-$downloadUrl = $resolvedPackage.DownloadUrl
+$downloadedTargets = @()
+foreach ($windowsPackage in $windowsPackages) {
+  $resolvedPackage = Resolve-StorePackageLink `
+    -Architecture $windowsPackage.Architecture `
+    -ExpectedPackageMoniker $windowsPackage.ExpectedPackageMoniker
+  $packageMoniker = $resolvedPackage.PackageMoniker
+  $downloadUrl = $resolvedPackage.DownloadUrl
 
-$target = Join-Path $OutDir "$packageMoniker.Msix"
+  $target = Join-Path $OutDir "$packageMoniker.Msix"
 
-Write-Host "Downloading $packageMoniker"
-Write-Host "Resolved Microsoft CDN URL: $downloadUrl"
+  Write-Host "Downloading $packageMoniker"
+  Write-Host "Resolved Microsoft CDN URL: $downloadUrl"
 
-Invoke-WebRequest `
-  -Uri $downloadUrl `
-  -OutFile $target `
-  -MaximumRedirection 5
+  Invoke-WebRequest `
+    -Uri $downloadUrl `
+    -OutFile $target `
+    -MaximumRedirection 5
 
-if ($expectedContentLength -gt 0) {
-  $actualLength = (Get-Item -LiteralPath $target).Length
-  if ($actualLength -ne $expectedContentLength) {
-    throw "Downloaded size mismatch for $target. Expected $expectedContentLength bytes, got $actualLength bytes."
+  if ($windowsPackage.ExpectedContentLength -gt 0) {
+    $actualLength = (Get-Item -LiteralPath $target).Length
+    if ($actualLength -ne $windowsPackage.ExpectedContentLength) {
+      throw "Downloaded size mismatch for $target. Expected $($windowsPackage.ExpectedContentLength) bytes, got $actualLength bytes."
+    }
   }
+
+  $downloadedTargets += $target
 }
 
-Get-FileHash -Algorithm SHA256 -Path $target |
+Get-FileHash -Algorithm SHA256 -Path $downloadedTargets |
   ForEach-Object { "$($_.Hash.ToLowerInvariant())  $(Split-Path -Leaf $_.Path)" } |
   Set-Content -Encoding ascii -Path (Join-Path $OutDir "SHA256SUMS-windows.txt")

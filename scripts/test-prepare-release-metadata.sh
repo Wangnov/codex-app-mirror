@@ -24,7 +24,25 @@ cat > "$tmp_dir/probe-manifest.json" <<'JSON'
       "version": "1.2.3.4",
       "packageMoniker": "OpenAI.Codex_1.2.3.4_x64__2p2nqsd0c76g0",
       "contentLength": 3,
-      "etag": "windows-etag"
+      "etag": "windows-etag",
+      "architectures": {
+        "x64": {
+          "architecture": "x64",
+          "status": "downloadable",
+          "downloadable": true,
+          "version": "1.2.3.4",
+          "packageMoniker": "OpenAI.Codex_1.2.3.4_x64__2p2nqsd0c76g0",
+          "contentLength": 3
+        },
+        "arm64": {
+          "architecture": "arm64",
+          "status": "catalog-only",
+          "downloadable": false,
+          "version": "1.2.3.4",
+          "packageMoniker": "OpenAI.Codex_1.2.3.4_arm64__2p2nqsd0c76g0",
+          "contentLength": 4
+        }
+      }
     },
     "macos": {
       "arm64": {
@@ -85,6 +103,8 @@ JSON
   grep -F 'Codex-mac-arm64.dmg' SHA256SUMS.txt
   grep -F 'OpenAI.Codex_1.2.3.4_x64__2p2nqsd0c76g0.Msix' SHA256SUMS.txt
   grep -F '![Codex App Mirror](https://github.com/Wangnov/codex-app-mirror/releases/latest/download/status.png)' release-notes.md
+  grep -F 'Windows ARM64 MSIX: `1.2.3.4`（Microsoft Store 目录已出现，下载 URL 暂未解析，状态：`catalog-only`）' release-notes.md
+  grep -F 'Windows x64: https://example.com/latest/win-x64' release-notes.md
   grep -F 'macOS Apple Silicon Sparkle: `1.2.3` build `6`' release-notes.md
   grep -F 'These links always point to the newest mirrored version.' release-notes.md
 

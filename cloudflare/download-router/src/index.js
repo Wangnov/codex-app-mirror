@@ -63,6 +63,8 @@ export default {
 function isAllowedLatestPath(pathname) {
   const aliases = new Set([
     "/latest/win",
+    "/latest/win-x64",
+    "/latest/win-arm64",
     "/latest/mac-arm64",
     "/latest/mac-intel",
     "/latest/checksums",
@@ -132,6 +134,14 @@ function downloadMetadataForPath(pathname) {
     },
     win: {
       filename: "Codex-Windows-x64.msix",
+      contentType: "application/vnd.ms-appx",
+    },
+    "win-x64": {
+      filename: "Codex-Windows-x64.msix",
+      contentType: "application/vnd.ms-appx",
+    },
+    "win-arm64": {
+      filename: "Codex-Windows-arm64.msix",
       contentType: "application/vnd.ms-appx",
     },
     checksums: {
