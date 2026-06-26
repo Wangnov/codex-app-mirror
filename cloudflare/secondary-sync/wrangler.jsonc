@@ -1,0 +1,47 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "codex-app-mirror-secondary-sync",
+  "main": "src/index.js",
+  "compatibility_date": "2026-06-26",
+  "workers_dev": true,
+  "triggers": {
+    "crons": ["17,47 * * * *"]
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "r2_buckets": [
+    {
+      "binding": "GLOBAL_R2",
+      "bucket_name": "codex-app-mirror"
+    }
+  ],
+  "workflows": [
+    {
+      "name": "codex-app-mirror-secondary-sync",
+      "binding": "SECONDARY_MIRROR_WORKFLOW",
+      "class_name": "SecondaryMirrorWorkflow",
+      "limits": {
+        "steps": 10000
+      }
+    }
+  ],
+  "vars": {
+    "SECONDARY_S3_REGION": "auto",
+    "SECONDARY_SYNC_PART_SIZE_BYTES": "16777216",
+    "SECONDARY_SYNC_SINGLE_PUT_MAX_BYTES": "33554432",
+    "SECONDARY_SYNC_PRUNE_GRACE_DAYS": "1",
+    "WORKFLOW_SUCCESS_RETENTION": "1 day",
+    "WORKFLOW_ERROR_RETENTION": "7 days"
+  },
+  "secrets": {
+    "required": [
+      "SYNC_AUTH_TOKEN",
+      "SECONDARY_S3_ENDPOINT",
+      "SECONDARY_S3_BUCKET",
+      "SECONDARY_S3_ACCESS_KEY_ID",
+      "SECONDARY_S3_SECRET_ACCESS_KEY"
+    ]
+  }
+}

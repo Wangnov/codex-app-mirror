@@ -429,179 +429,16 @@ jobs:
             appcast.xml \
             appcast-x64.xml
 
-      - name: Sync GitHub Release assets to secondary S3 mirror
+      - name: Trigger Cloudflare secondary S3 sync
         env:
-          SECONDARY_S3_ENDPOINT: ${{ secrets.SECONDARY_S3_ENDPOINT }}
-          SECONDARY_S3_BUCKET: ${{ secrets.SECONDARY_S3_BUCKET }}
-          SECONDARY_S3_REGION: ${{ secrets.SECONDARY_S3_REGION }}
-          SECONDARY_S3_PREFIX: latest
-          SECONDARY_S3_ACCESS_KEY_ID: ${{ secrets.SECONDARY_S3_ACCESS_KEY_ID }}
-          SECONDARY_S3_SECRET_ACCESS_KEY: ${{ secrets.SECONDARY_S3_SECRET_ACCESS_KEY }}
-          SECONDARY_S3_UPLOAD_ATTEMPTS: 4
-          SECONDARY_S3_RETRY_SLEEP_SECONDS: 5
-          SECONDARY_S3_CONNECT_TIMEOUT_SECONDS: 20
-          SECONDARY_S3_READ_TIMEOUT_SECONDS: 120
-          SECONDARY_S3_AWS_MAX_ATTEMPTS: 3
-          SECONDARY_S3_AWS_RETRY_MODE: standard
-          SECONDARY_S3_UPLOAD_MODE: put-object
-          SECONDARY_S3_MULTIPART_THRESHOLD: 5GB
-          SECONDARY_S3_MULTIPART_CHUNKSIZE: 64MB
-          SECONDARY_S3_MAX_CONCURRENT_REQUESTS: 2
+          CF_SECONDARY_SYNC_URL: ${{ secrets.CF_SECONDARY_SYNC_URL }}
+          CF_SECONDARY_SYNC_TOKEN: ${{ secrets.CF_SECONDARY_SYNC_TOKEN }}
+          SECONDARY_SYNC_MODE: start
+          SECONDARY_SYNC_RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+          SECONDARY_SYNC_FORCE: ${{ inputs.force_release || 'false' }}
+          SECONDARY_SYNC_TIMEOUT_SECONDS: 2400
         shell: bash
-        run: |
-          set -euo pipefail
-          SECONDARY_S3_REGION="${SECONDARY_S3_REGION:-auto}"
-          if [[ -z "${SECONDARY_S3_ENDPOINT:-}" && -z "${SECONDARY_S3_BUCKET:-}" && -z "${SECONDARY_S3_ACCESS_KEY_ID:-}" && -z "${SECONDARY_S3_SECRET_ACCESS_KEY:-}" ]]; then
-            echo "Secondary S3 mirror is not configured; skipping."
-            exit 0
-          fi
-          if [[ -z "${SECONDARY_S3_ENDPOINT:-}" || -z "${SECONDARY_S3_BUCKET:-}" || -z "${SECONDARY_S3_ACCESS_KEY_ID:-}" || -z "${SECONDARY_S3_SECRET_ACCESS_KEY:-}" ]]; then
-            echo "Secondary S3 mirror is partially configured; set endpoint, bucket, access key, and secret key." >&2
-            exit 1
-          fi
-
-          mac_arm64="artifacts/codex-macos/Codex-mac-arm64.dmg"
-          mac_intel="artifacts/codex-macos/Codex-mac-x64.dmg"
-          win_x64_msix="$(find artifacts/codex-windows -maxdepth 1 -type f \( -name '*_x64__*.Msix' -o -name '*_x64__*.msix' \) | sort | head -n 1)"
-          win_arm64_msix="$(find artifacts/codex-windows -maxdepth 1 -type f \( -name '*_arm64__*.Msix' -o -name '*_arm64__*.msix' \) | sort | head -n 1 || true)"
-
-          arm_short_version="$(jq -r '.sources.macos.arm64.appcast.shortVersionString' release-manifest.json)"
-          x64_short_version="$(jq -r '.sources.macos.x64.appcast.shortVersionString' release-manifest.json)"
-          mac_arm64_zip="artifacts/codex-macos/Codex-darwin-arm64-${arm_short_version}.zip"
-          mac_intel_zip="artifacts/codex-macos/Codex-darwin-x64-${x64_short_version}.zip"
-
-          test -f "$mac_arm64"
-          test -f "$mac_intel"
-          test -f "$win_x64_msix"
-          test -f "$mac_arm64_zip"
-          test -f "$mac_intel_zip"
-          test -f appcast.xml
-          test -f appcast-x64.xml
-
-          secondary_args=(
-            "$mac_arm64"
-            "$mac_intel"
-            "$win_x64_msix"
-            SHA256SUMS.txt
-            release-manifest.json
-            "$mac_arm64_zip"
-            "$mac_intel_zip"
-            appcast.xml
-            appcast-x64.xml
-          )
-          if [[ -n "$win_arm64_msix" && -f "$win_arm64_msix" ]]; then
-            secondary_args+=("$win_arm64_msix")
-          fi
-
-          bash scripts/sync-secondary-s3.sh \
-            "${secondary_args[@]}"
-
-          tmp_config="$(mktemp)"
-          cleanup() {
-            rm -f "$tmp_config"
-          }
-          trap cleanup EXIT
-          cat > "$tmp_config" <<EOF
-          [default]
-          region = $SECONDARY_S3_REGION
-          s3 =
-              addressing_style = path
-          EOF
-
-          secondary_readback() {
-            local key="$1"
-            local dest="$2"
-            AWS_ACCESS_KEY_ID="$SECONDARY_S3_ACCESS_KEY_ID" \
-            AWS_SECRET_ACCESS_KEY="$SECONDARY_S3_SECRET_ACCESS_KEY" \
-            AWS_DEFAULT_REGION="$SECONDARY_S3_REGION" \
-            AWS_CONFIG_FILE="$tmp_config" \
-            aws s3 cp "s3://$SECONDARY_S3_BUCKET/$key" "$dest" \
-              --endpoint-url "$SECONDARY_S3_ENDPOINT" \
-              --region "$SECONDARY_S3_REGION" \
-              --no-progress
-          }
-
-          secondary_readback latest/manifest /tmp/secondary-s3-manifest.json
-          cmp release-manifest.json /tmp/secondary-s3-manifest.json
-
-          # Read the appcasts back from the secondary bucket and diff. Keeps the
-          # secondary feed from silently drifting out of sync with each release.
-          secondary_readback latest/appcast.xml /tmp/secondary-s3-appcast.xml
-          cmp appcast.xml /tmp/secondary-s3-appcast.xml
-          secondary_readback latest/appcast-x64.xml /tmp/secondary-s3-appcast-x64.xml
-          cmp appcast-x64.xml /tmp/secondary-s3-appcast-x64.xml
-
-      - name: Prune stale macOS Sparkle archives on secondary S3 mirror
-        env:
-          SECONDARY_S3_ENDPOINT: ${{ secrets.SECONDARY_S3_ENDPOINT }}
-          SECONDARY_S3_BUCKET: ${{ secrets.SECONDARY_S3_BUCKET }}
-          SECONDARY_S3_REGION: ${{ secrets.SECONDARY_S3_REGION }}
-          SECONDARY_S3_ACCESS_KEY_ID: ${{ secrets.SECONDARY_S3_ACCESS_KEY_ID }}
-          SECONDARY_S3_SECRET_ACCESS_KEY: ${{ secrets.SECONDARY_S3_SECRET_ACCESS_KEY }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Symmetric to the R2 prune above: keep the secondary IHEP mirror's
-          # latest/mac prefix bounded so old Sparkle archives do not accumulate
-          # forever on its limited storage. Skip cleanly when the mirror is not
-          # configured (same contract as the secondary sync step).
-          if [[ -z "${SECONDARY_S3_ENDPOINT:-}" && -z "${SECONDARY_S3_BUCKET:-}" && -z "${SECONDARY_S3_ACCESS_KEY_ID:-}" && -z "${SECONDARY_S3_SECRET_ACCESS_KEY:-}" ]]; then
-            echo "Secondary S3 mirror is not configured; skipping prune."
-            exit 0
-          fi
-          if [[ -z "${SECONDARY_S3_ENDPOINT:-}" || -z "${SECONDARY_S3_BUCKET:-}" || -z "${SECONDARY_S3_ACCESS_KEY_ID:-}" || -z "${SECONDARY_S3_SECRET_ACCESS_KEY:-}" ]]; then
-            echo "Secondary S3 mirror is partially configured; set endpoint, bucket, access key, and secret key." >&2
-            exit 1
-          fi
-
-          # Recompute the current Sparkle archive basenames from the manifest so
-          # the keep list matches the enclosure URLs build-appcast.sh emitted and
-          # the secondary sync uploaded (latest/mac/{arm64,intel}/...).
-          arm_short_version="$(jq -r '.sources.macos.arm64.appcast.shortVersionString' release-manifest.json)"
-          x64_short_version="$(jq -r '.sources.macos.x64.appcast.shortVersionString' release-manifest.json)"
-          mac_arm64_zip="artifacts/codex-macos/Codex-darwin-arm64-${arm_short_version}.zip"
-          mac_intel_zip="artifacts/codex-macos/Codex-darwin-x64-${x64_short_version}.zip"
-          test -f "$mac_arm64_zip"
-          test -f "$mac_intel_zip"
-
-          # The secondary mirror (IHEP S3) needs path-style addressing, the same
-          # way the secondary sync/readback do. Point the AWS CLI at a config that
-          # forces it so list/delete resolve against the custom endpoint host.
-          secondary_region="${SECONDARY_S3_REGION:-auto}"
-          tmp_config="$(mktemp)"
-          cleanup() {
-            rm -f "$tmp_config"
-          }
-          trap cleanup EXIT
-          cat > "$tmp_config" <<EOF
-          [default]
-          region = $secondary_region
-          s3 =
-              addressing_style = path
-          EOF
-
-          # prune-mac-source.sh speaks the R2/AWS env-var vocabulary, so map the
-          # secondary mirror's credentials and endpoint onto it. The keep list is
-          # the current arm64/x64 zip basenames PLUS the freshly built appcasts, so
-          # the script protects the current full .zip AND every live <sparkle:deltas>
-          # .delta they reference -- identical to the R2 prune above. Without the
-          # appcasts, live deltas on this limited IHEP mirror would be deleted after
-          # the grace window while R2 kept them. The prefix matches the secondary
-          # layout (SECONDARY_S3_PREFIX defaults to "latest").
-          secondary_prefix="${SECONDARY_S3_PREFIX:-latest}"
-          R2_S3_ENDPOINT="$SECONDARY_S3_ENDPOINT" \
-          AWS_ACCESS_KEY_ID="$SECONDARY_S3_ACCESS_KEY_ID" \
-          AWS_SECRET_ACCESS_KEY="$SECONDARY_S3_SECRET_ACCESS_KEY" \
-          AWS_DEFAULT_REGION="$secondary_region" \
-          AWS_EC2_METADATA_DISABLED=true \
-          AWS_CONFIG_FILE="$tmp_config" \
-            bash scripts/prune-mac-source.sh \
-              "$SECONDARY_S3_BUCKET" \
-              "$secondary_prefix/mac" \
-              "$mac_arm64_zip" \
-              "$mac_intel_zip" \
-              appcast.xml \
-              appcast-x64.xml
+        run: bash scripts/trigger-secondary-sync.sh
 
   no_changes:
     name: No new version
@@ -609,6 +446,8 @@ jobs:
     needs: probe
     if: needs.probe.outputs.should_release != 'true'
     steps:
+      - uses: actions/checkout@v6
+
       - name: Report current state
         env:
           SKIP_REASON: ${{ needs.probe.outputs.skip_reason }}
@@ -617,3 +456,14 @@ jobs:
           echo "No new Codex app version detected."
           echo "$SKIP_REASON"
           echo "$VERSION_SUMMARY"
+
+      - name: Reconcile Cloudflare secondary S3 sync
+        env:
+          CF_SECONDARY_SYNC_URL: ${{ secrets.CF_SECONDARY_SYNC_URL }}
+          CF_SECONDARY_SYNC_TOKEN: ${{ secrets.CF_SECONDARY_SYNC_TOKEN }}
+          SECONDARY_SYNC_MODE: reconcile
+          SECONDARY_SYNC_RELEASE_TAG: ${{ needs.probe.outputs.latest_tag }}
+          SECONDARY_SYNC_FORCE: false
+          SECONDARY_SYNC_TIMEOUT_SECONDS: 2400
+        shell: bash
+        run: bash scripts/trigger-secondary-sync.sh

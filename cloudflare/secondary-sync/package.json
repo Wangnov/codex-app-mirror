@@ -1,0 +1,14 @@
+{
+  "name": "codex-app-mirror-secondary-sync",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check src/core.js && node --check src/index.js && node --test test/*.mjs && wrangler deploy --dry-run",
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev --test-scheduled",
+    "test": "node --test test/*.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
