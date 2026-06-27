@@ -55,6 +55,7 @@ export async function handleApiRequest(request, env) {
         aliases: item.aliasKeys,
         role: item.role,
       })),
+      staleAliases: plan.staleAliasKeys,
     });
   }
 
@@ -201,6 +202,7 @@ export function buildObjectPlan(manifest, releaseTag) {
   const windows = manifest?.sources?.windows || {};
   const macos = manifest?.sources?.macos || {};
   const items = [];
+  const staleAliasKeys = [];
 
   addItem(items, {
     id: "win-x64",
@@ -224,6 +226,8 @@ export function buildObjectPlan(manifest, releaseTag) {
       role: "installer",
       required: true,
     });
+  } else {
+    staleAliasKeys.push("latest/win-arm64");
   }
 
   addItem(items, {
@@ -329,6 +333,7 @@ export function buildObjectPlan(manifest, releaseTag) {
   return {
     releaseTag,
     items,
+    staleAliasKeys,
     keepLatestMacKeys: items
       .flatMap((item) => item.aliasKeys)
       .filter((key) => key.startsWith("latest/mac/")),
@@ -458,6 +463,16 @@ export async function cleanupStageObjects(env, items) {
       await s3.deleteObject(marker);
       deleted.push(marker);
     }
+  }
+  return { deleted };
+}
+
+export async function deleteStaleAliasObjects(env, keys) {
+  const s3 = createS3Client(env);
+  const deleted = [];
+  for (const key of keys) {
+    await s3.deleteObject(key);
+    deleted.push(key);
   }
   return { deleted };
 }
@@ -878,22 +893,22 @@ async function assertOk(response, operation, key) {
 }
 
 export function deriveReleaseTag(manifest) {
-  const windowsVersion = manifest?.sources?.windows?.version || "";
+  const explicitVersion = manifest?.codexVersion || manifest?.derived?.codexVersion || "";
+  if (explicitVersion) {
+    return `codex-app-${sanitizeTagPart(explicitVersion)}`;
+  }
+
+  const windowsAppVersion =
+    manifest?.sources?.windows?.appVersion || manifest?.sources?.windows?.architectures?.x64?.appVersion || "";
   const arm = manifest?.sources?.macos?.arm64?.appcast || {};
   const x64 = manifest?.sources?.macos?.x64?.appcast || {};
-  if (!windowsVersion || !arm.shortVersionString || !arm.version || !x64.shortVersionString || !x64.version) {
-    return "";
+  if (arm.shortVersionString && arm.shortVersionString === x64.shortVersionString) {
+    return `codex-app-${sanitizeTagPart(arm.shortVersionString)}`;
   }
-  const windowsTag = sanitizeTagPart(windowsVersion);
-  let macTag;
-  if (arm.shortVersionString === x64.shortVersionString && arm.version === x64.version) {
-    macTag = `mac-${sanitizeTagPart(arm.shortVersionString)}-b${sanitizeTagPart(arm.version)}`;
-  } else {
-    macTag = `mac-arm64-${sanitizeTagPart(arm.shortVersionString)}-b${sanitizeTagPart(
-      arm.version,
-    )}-x64-${sanitizeTagPart(x64.shortVersionString)}-b${sanitizeTagPart(x64.version)}`;
+  if (windowsAppVersion) {
+    return `codex-app-${sanitizeTagPart(windowsAppVersion)}`;
   }
-  return `codex-app-win-${windowsTag}-${macTag}`;
+  return "";
 }
 
 export function sanitizeTagPart(value) {

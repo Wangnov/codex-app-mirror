@@ -26,7 +26,7 @@ set -euo pipefail
 # Usage:
 #   build-appcast.sh <arch> <manifest> <public-base-url> <output-path>
 #     arch             arm64 | x64
-#     manifest         path to release-manifest.json (schemaVersion 2)
+#     manifest         path to release-manifest.json (schemaVersion 2+)
 #     public-base-url  e.g. https://codexapp.agentsmirror.com (no trailing /latest)
 #     output-path      where to write the appcast XML
 

@@ -340,29 +340,6 @@ download_release_asset() {
   gh api -H "Accept: application/octet-stream" "$asset_api_url" > "$dest_dir/$asset_name"
 }
 
-release_exists() {
-  local status
-
-  if github_api_json_allow_404 "repos/{owner}/{repo}/releases/tags/$1" >/dev/null; then
-    return 0
-  else
-    # `$?` after the closing `fi` is the if-statement's status (0 on a false
-    # condition with no else), not the helper's — capture it in the else branch
-    # so a 404 (status 1) is treated as "absent" instead of falling through to
-    # `exit "$status"` and silently terminating the whole probe.
-    status=$?
-  fi
-  if [[ "$status" -eq 1 ]]; then
-    return 1
-  fi
-
-  exit "$status"
-}
-
-sanitize_tag_part() {
-  tr -cs 'A-Za-z0-9._-' '-' <<<"$1" | sed -E 's/^-+//; s/-+$//'
-}
-
 validate_release_tag() {
   local tag="$1"
 
@@ -370,25 +347,6 @@ validate_release_tag() {
     echo "Invalid release tag '$tag'. Use 1-128 ASCII letters, numbers, dots, underscores, or hyphens; the first character must be alphanumeric." >&2
     exit 1
   fi
-}
-
-predicted_release_tag() {
-  local windows_version="$1"
-  local arm_version="$2"
-  local arm_build="$3"
-  local x64_version="$4"
-  local x64_build="$5"
-  local windows_tag
-  local mac_tag
-
-  windows_tag="$(sanitize_tag_part "$windows_version")"
-  if [[ "$arm_version" == "$x64_version" && "$arm_build" == "$x64_build" ]]; then
-    mac_tag="mac-$(sanitize_tag_part "$arm_version")-b$(sanitize_tag_part "$arm_build")"
-  else
-    mac_tag="mac-arm64-$(sanitize_tag_part "$arm_version")-b$(sanitize_tag_part "$arm_build")-x64-$(sanitize_tag_part "$x64_version")-b$(sanitize_tag_part "$x64_build")"
-  fi
-
-  printf 'codex-app-win-%s-%s\n' "$windows_tag" "$mac_tag"
 }
 
 windows_update_wait_notice() {
@@ -979,28 +937,18 @@ else
   fi
 fi
 
-if [[ "$should_release" == "true" && "$force_release" != "true" && -z "$release_tag_input" && -z "$release_tag_fallback" ]]; then
-  predicted_tag="$(predicted_release_tag "$windows_version" "$arm_appcast_version" "$arm_appcast_build" "$x64_appcast_version" "$x64_appcast_build")"
-  if release_exists "$predicted_tag"; then
-    if public_mirror_latest_matches "$manifest_path" "$predicted_tag"; then
-      should_release="false"
-      update_notice="$(windows_update_wait_notice "$manifest_path")"
-      if [[ -n "$update_notice" ]]; then
-        skip_reason="$update_notice Release tag $predicted_tag already exists."
-      else
-        skip_reason="release tag $predicted_tag already exists"
-      fi
-    else
-      release_tag_fallback="$predicted_tag"
-      skip_reason="release tag $predicted_tag already exists, but public mirror aliases or appcasts are stale; republishing"
-    fi
-  fi
-fi
+# The canonical tag now depends on the Windows Codex app's internal version,
+# which is stored inside the downloaded MSIX (app.asar/package.json) rather than
+# in Microsoft Store's four-part package moniker. Leave release_tag empty here so
+# prepare-release-metadata.sh can derive the exact codex-app-<version> tag after
+# the Windows artifact has been downloaded. The latest-tag fallback above is
+# still used when this run is only repairing stale latest aliases for the already
+# published latest release.
 
 if [[ -n "$release_tag_input" ]]; then
   release_tag="$release_tag_input"
 elif [[ "$force_release" == "true" ]]; then
-  release_tag="codex-app-force-$(date -u +'%Y%m%d-%H%M%S')"
+  release_tag=""
 elif [[ -n "$release_tag_fallback" ]]; then
   release_tag="$release_tag_fallback"
 else

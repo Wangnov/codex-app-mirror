@@ -39,6 +39,7 @@ if ($ManifestPath) {
           Architecture = $property.Name
           ExpectedPackageMoniker = $entry.packageMoniker
           ExpectedContentLength = [int64] ($entry.contentLength ?? 0)
+          Required = ($property.Name -eq "x64")
         }
       }
     }
@@ -49,6 +50,7 @@ if ($ManifestPath) {
       Architecture = "x64"
       ExpectedPackageMoniker = $manifest.sources.windows.packageMoniker
       ExpectedContentLength = [int64] ($manifest.sources.windows.contentLength ?? 0)
+      Required = $true
     }
   }
 
@@ -60,13 +62,15 @@ if ($ManifestPath) {
     Architecture = "x64"
     ExpectedPackageMoniker = $null
     ExpectedContentLength = 0
+    Required = $true
   }
 }
 
 function Resolve-StorePackageLink {
   param(
     [string] $Architecture,
-    [string] $ExpectedPackageMoniker
+    [string] $ExpectedPackageMoniker,
+    [bool] $Required = $true
   )
 
   $lastError = "No Microsoft Store package link was resolved."
@@ -94,6 +98,10 @@ function Resolve-StorePackageLink {
 
           if ($ExpectedPackageMoniker -and $packageMoniker -ne $ExpectedPackageMoniker) {
             $lastError = "Microsoft Store package changed after probe. Expected $ExpectedPackageMoniker, got $packageMoniker."
+            if (-not $Required) {
+              Write-Warning "$lastError Skipping optional Windows $Architecture package for this run."
+              return $null
+            }
           } else {
             return [pscustomobject]@{
               PackageMoniker = $packageMoniker
@@ -112,6 +120,11 @@ function Resolve-StorePackageLink {
     }
   }
 
+  if (-not $Required) {
+    Write-Warning "$lastError Skipping optional Windows $Architecture package for this run."
+    return $null
+  }
+
   throw $lastError
 }
 
@@ -119,7 +132,12 @@ $downloadedTargets = @()
 foreach ($windowsPackage in $windowsPackages) {
   $resolvedPackage = Resolve-StorePackageLink `
     -Architecture $windowsPackage.Architecture `
-    -ExpectedPackageMoniker $windowsPackage.ExpectedPackageMoniker
+    -ExpectedPackageMoniker $windowsPackage.ExpectedPackageMoniker `
+    -Required $windowsPackage.Required
+  if ($null -eq $resolvedPackage) {
+    continue
+  }
+
   $packageMoniker = $resolvedPackage.PackageMoniker
   $downloadUrl = $resolvedPackage.DownloadUrl
 
@@ -136,11 +154,20 @@ foreach ($windowsPackage in $windowsPackages) {
   if ($windowsPackage.ExpectedContentLength -gt 0) {
     $actualLength = (Get-Item -LiteralPath $target).Length
     if ($actualLength -ne $windowsPackage.ExpectedContentLength) {
+      if (-not $windowsPackage.Required) {
+        Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue
+        Write-Warning "Downloaded size mismatch for optional Windows $($windowsPackage.Architecture) package. Expected $($windowsPackage.ExpectedContentLength) bytes, got $actualLength bytes. Skipping this optional package for this run."
+        continue
+      }
       throw "Downloaded size mismatch for $target. Expected $($windowsPackage.ExpectedContentLength) bytes, got $actualLength bytes."
     }
   }
 
   $downloadedTargets += $target
+}
+
+if ($downloadedTargets.Count -eq 0) {
+  throw "No Windows packages were downloaded."
 }
 
 Get-FileHash -Algorithm SHA256 -Path $downloadedTargets |

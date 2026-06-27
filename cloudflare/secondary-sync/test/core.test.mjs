@@ -4,6 +4,7 @@ import {
   buildObjectPlan,
   cleanupStageObjects,
   commitObjectToAliases,
+  deleteStaleAliasObjects,
   decoratePlanWithStage,
   deriveReleaseTag,
   pruneStaleLatestMacObjects,
@@ -23,7 +24,7 @@ test("buildObjectPlan derives release tag and shares the Windows x64 upload", ()
   const tag = deriveReleaseTag(manifest);
   const plan = buildObjectPlan(manifest, tag);
 
-  assert.equal(tag, "codex-app-win-1.2.3.4-mac-2.0.0-b100");
+  assert.equal(tag, "codex-app-2.0.0");
   assert.equal(plan.items.filter((item) => item.id === "win-x64").length, 1);
   assert.deepEqual(plan.items.find((item) => item.id === "win-x64").aliasKeys, [
     "latest/win-x64",
@@ -31,6 +32,16 @@ test("buildObjectPlan derives release tag and shares the Windows x64 upload", ()
   ]);
   assert.ok(plan.items.some((item) => item.id === "win-arm64"));
   assert.ok(plan.keepLatestMacKeys.includes("latest/mac/arm64/Codex9999-live-arm64.delta"));
+});
+
+test("buildObjectPlan omits unavailable Windows ARM64 and marks stale alias", () => {
+  const manifest = fixtureManifest();
+  manifest.sources.windows.architectures.arm64.downloadable = false;
+
+  const plan = buildObjectPlan(manifest, deriveReleaseTag(manifest));
+
+  assert.equal(plan.items.some((item) => item.id === "win-arm64"), false);
+  assert.deepEqual(plan.staleAliasKeys, ["latest/win-arm64"]);
 });
 
 test("uploads a ranged multipart object to staging and commits both Windows aliases", async () => {
@@ -65,6 +76,19 @@ test("uploads a ranged multipart object to staging and commits both Windows alia
 
   await cleanupStageObjects(env, [item]);
   assert.equal(s3.objects.has(item.stageKey), false);
+});
+
+test("deletes stale latest aliases from the secondary mirror", async () => {
+  const s3 = createMockS3();
+  s3.objects.set("latest/win-arm64", objectEntry("old-arm64"));
+  s3.objects.set("latest/win-x64", objectEntry("current-x64"));
+  globalThis.fetch = s3.fetch;
+
+  const result = await deleteStaleAliasObjects(fixtureEnv(new Map()), ["latest/win-arm64"]);
+
+  assert.deepEqual(result.deleted, ["latest/win-arm64"]);
+  assert.equal(s3.objects.has("latest/win-arm64"), false);
+  assert.equal(s3.objects.has("latest/win-x64"), true);
 });
 
 test("prunes stale unreferenced Sparkle archives but keeps current and recent objects", async () => {
@@ -137,10 +161,12 @@ test("falls back to ListObjectsV2 when HEAD reports zero bytes for a non-empty o
 
 function fixtureManifest() {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
+    codexVersion: "2.0.0",
     sources: {
       windows: {
         version: "1.2.3.4",
+        appVersion: "2.0.0",
         architectures: {
           x64: { downloadable: true },
           arm64: { downloadable: true },

@@ -5,6 +5,7 @@ import {
   cleanupStageObjects,
   commitObjectToAliases,
   commitOrder,
+  deleteStaleAliasObjects,
   decoratePlanWithStage,
   discoverSourceManifest,
   handleApiRequest,
@@ -67,6 +68,10 @@ export class SecondaryMirrorWorkflow extends WorkflowEntrypoint {
       );
     }
 
+    const staleAliasResult = await step.do("delete stale latest aliases", HOUSEKEEPING_STEP, () =>
+      nonRetryableGuard(() => deleteStaleAliasObjects(this.env, plan.staleAliasKeys)),
+    );
+
     const pruneResult = await step.do("prune stale Sparkle archives", HOUSEKEEPING_STEP, () =>
       nonRetryableGuard(() => pruneStaleLatestMacObjects(this.env, plan.keepLatestMacKeys)),
     );
@@ -81,6 +86,7 @@ export class SecondaryMirrorWorkflow extends WorkflowEntrypoint {
       stagePrefix: plan.stagePrefix,
       uploaded: uploadResults.length,
       committed: commitResults.reduce((count, result) => count + result.aliases.length, 0),
+      staleAliasesDeleted: staleAliasResult.deleted.length,
       pruned: pruneResult.pruned.length,
       cleaned: cleanupResult.deleted.length,
       completedAt: new Date().toISOString(),
