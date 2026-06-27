@@ -198,11 +198,19 @@ jobs:
           fi
 
           if [[ "$INCLUDE_WINDOWS" == "true" ]]; then
-            mapfile -d '' windows_assets < <(find artifacts/codex-windows -maxdepth 1 -type f -print0 | sort -z)
-            if [[ "${#windows_assets[@]}" -eq 0 ]]; then
-              echo "No Windows release assets found." >&2
-              exit 1
+            windows_assets=()
+            win_x64_msix="$(find artifacts/codex-windows -maxdepth 1 -type f \( -name '*_x64__*.Msix' -o -name '*_x64__*.msix' \) | sort | head -n 1)"
+            test -f "$win_x64_msix"
+            windows_assets+=("$win_x64_msix")
+
+            if [[ "$(jq -r '.sources.windows.architectures.arm64.downloadable // false' release-manifest.json)" == "true" ]]; then
+              win_arm64_msix="$(find artifacts/codex-windows -maxdepth 1 -type f \( -name '*_arm64__*.Msix' -o -name '*_arm64__*.msix' \) | sort | head -n 1)"
+              test -f "$win_arm64_msix"
+              windows_assets+=("$win_arm64_msix")
             fi
+
+            test -f artifacts/codex-windows/SHA256SUMS-windows.txt
+            windows_assets+=(artifacts/codex-windows/SHA256SUMS-windows.txt)
             release_assets+=("${windows_assets[@]}")
           fi
 
@@ -232,9 +240,14 @@ jobs:
           fi
 
           if existing_assets_json="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets' 2>/dev/null)"; then
+            desired_asset_names=()
+            for asset in "${release_assets[@]}"; do
+              desired_asset_names+=("$(basename "$asset")")
+            done
             missing_assets=()
             replacement_assets=()
             mismatched_assets=()
+            stale_optional_assets=()
             for asset in "${release_assets[@]}"; do
               name="$(basename "$asset")"
               local_size="$(wc -c < "$asset" | tr -d '[:space:]')"
@@ -257,6 +270,16 @@ jobs:
                 esac
               fi
             done
+            while IFS= read -r name; do
+              [[ -z "$name" ]] && continue
+              case "$name" in
+                OpenAI.Codex_*_arm64__*.Msix|OpenAI.Codex_*_arm64__*.msix)
+                  if ! printf '%s\n' "${desired_asset_names[@]}" | grep -Fxq "$name"; then
+                    stale_optional_assets+=("$name")
+                  fi
+                  ;;
+              esac
+            done < <(jq -r '.[].name' <<<"$existing_assets_json")
 
             if [[ "${#mismatched_assets[@]}" -gt 0 ]]; then
               echo "Existing release assets differ from the newly built assets; refusing to overwrite them without operator review." >&2
@@ -265,6 +288,11 @@ jobs:
             fi
 
             gh release edit "$RELEASE_TAG" "${edit_args[@]}"
+            if [[ "${#stale_optional_assets[@]}" -gt 0 ]]; then
+              for name in "${stale_optional_assets[@]}"; do
+                gh release delete-asset "$RELEASE_TAG" "$name" --yes
+              done
+            fi
             if [[ "${#missing_assets[@]}" -gt 0 ]]; then
               gh release upload "$RELEASE_TAG" "${missing_assets[@]}"
             fi
@@ -274,7 +302,7 @@ jobs:
                 gh release upload "$RELEASE_TAG" "$asset"
               done
             fi
-            if [[ "${#missing_assets[@]}" -eq 0 && "${#replacement_assets[@]}" -eq 0 ]]; then
+            if [[ "${#missing_assets[@]}" -eq 0 && "${#replacement_assets[@]}" -eq 0 && "${#stale_optional_assets[@]}" -eq 0 ]]; then
               echo "All release assets already exist with matching SHA-256 digests."
             else
               echo "Release assets were reconciled without bulk clobbering existing downloads."
@@ -318,6 +346,7 @@ jobs:
           mac_intel="artifacts/codex-macos/Codex-mac-x64.dmg"
           win_x64_msix="$(find artifacts/codex-windows -maxdepth 1 -type f \( -name '*_x64__*.Msix' -o -name '*_x64__*.msix' \) | sort | head -n 1)"
           win_arm64_msix="$(find artifacts/codex-windows -maxdepth 1 -type f \( -name '*_arm64__*.Msix' -o -name '*_arm64__*.msix' \) | sort | head -n 1 || true)"
+          win_arm64_downloadable="$(jq -r '.sources.windows.architectures.arm64.downloadable // false' release-manifest.json)"
 
           test -f "$mac_arm64"
           test -f "$mac_intel"
@@ -364,7 +393,7 @@ jobs:
             bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/mac-intel" "$mac_intel" Codex-mac-intel.dmg
             bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/win" "$win_x64_msix" Codex-Windows-x64.msix
             bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/win-x64" "$win_x64_msix" Codex-Windows-x64.msix
-            if [[ -n "$win_arm64_msix" && -f "$win_arm64_msix" ]]; then
+            if [[ "$win_arm64_downloadable" == "true" && -n "$win_arm64_msix" && -f "$win_arm64_msix" ]]; then
               bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/win-arm64" "$win_arm64_msix" Codex-Windows-arm64.msix
             fi
             bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/checksums" SHA256SUMS.txt SHA256SUMS.txt
@@ -391,7 +420,7 @@ jobs:
           bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/mac-intel "$mac_intel" Codex-mac-intel.dmg
           bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/win "$win_x64_msix" Codex-Windows-x64.msix
           bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/win-x64 "$win_x64_msix" Codex-Windows-x64.msix
-          if [[ -n "$win_arm64_msix" && -f "$win_arm64_msix" ]]; then
+          if [[ "$win_arm64_downloadable" == "true" && -n "$win_arm64_msix" && -f "$win_arm64_msix" ]]; then
             bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/win-arm64 "$win_arm64_msix" Codex-Windows-arm64.msix
           else
             aws s3 rm "s3://$R2_BUCKET_NAME/latest/win-arm64" \

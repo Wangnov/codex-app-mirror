@@ -167,15 +167,7 @@ windows_x64_msix="$(find_windows_x64_msix "$windows_artifacts_dir")"
 windows_arm64_msix="$(find_windows_arm64_msix "$windows_artifacts_dir")"
 windows_arm64_downloadable=false
 windows_arm64_missing_reason="${windows_arm64_status:-catalog-only}"
-if [[ "$windows_arm64_probe_downloadable" == "true" && -n "$windows_arm64_package" ]]; then
-  if [[ -n "$windows_arm64_msix" ]]; then
-    windows_arm64_downloadable=true
-    windows_arm64_status="${windows_arm64_status:-downloadable}"
-  else
-    windows_arm64_status="skipped-rollout-drift"
-    windows_arm64_missing_reason="$windows_arm64_status"
-  fi
-fi
+windows_arm64_app_version=""
 windows_app_version="${WINDOWS_APP_VERSION:-}"
 if [[ -z "$windows_app_version" ]]; then
   windows_app_version="$(jq -r '.sources.windows.appVersion // .sources.windows.architectures.x64.appVersion // empty' "$probe_manifest")"
@@ -191,6 +183,30 @@ fi
 if [[ -z "$windows_app_version" || "$windows_app_version" == "null" ]]; then
   echo "Missing Windows Codex app version." >&2
   exit 1
+fi
+
+if [[ -n "$windows_arm64_msix" ]]; then
+  if ! windows_arm64_app_version="$(python3 "$script_dir/read-windows-msix-version.py" "$windows_arm64_msix")"; then
+    windows_arm64_app_version=""
+    windows_arm64_status="skipped-version-unreadable"
+    windows_arm64_missing_reason="$windows_arm64_status"
+  fi
+fi
+
+if [[ "$windows_arm64_probe_downloadable" == "true" && -n "$windows_arm64_package" ]]; then
+  if [[ -z "$windows_arm64_msix" ]]; then
+    windows_arm64_status="skipped-rollout-drift"
+    windows_arm64_missing_reason="$windows_arm64_status"
+  elif [[ -z "$windows_arm64_app_version" ]]; then
+    windows_arm64_status="${windows_arm64_status:-skipped-version-unreadable}"
+    windows_arm64_missing_reason="$windows_arm64_status"
+  elif [[ "$windows_arm64_app_version" != "$windows_app_version" ]]; then
+    windows_arm64_status="skipped-version-mismatch"
+    windows_arm64_missing_reason="$windows_arm64_status"
+  else
+    windows_arm64_downloadable=true
+    windows_arm64_status="${windows_arm64_status:-downloadable}"
+  fi
 fi
 
 mac_codex_version="${mac_common_version:-$mac_arm_version}"
@@ -250,6 +266,7 @@ jq \
   --argjson publishLatest "$publish_latest" \
   --argjson windowsArm64Downloadable "$windows_arm64_downloadable" \
   --arg windowsArm64Status "$windows_arm64_status" \
+  --arg windowsArm64AppVersion "$windows_arm64_app_version" \
   --arg platformCompleteness "$platform_completeness" \
   '
   .schemaVersion = 3
@@ -264,6 +281,11 @@ jq \
   | if .sources.windows.architectures.arm64? != null then
       .sources.windows.architectures.arm64.downloadable = $windowsArm64Downloadable
       | .sources.windows.architectures.arm64.status = $windowsArm64Status
+      | if $windowsArm64AppVersion != "" then
+          .sources.windows.architectures.arm64.appVersion = $windowsArm64AppVersion
+        else
+          del(.sources.windows.architectures.arm64.appVersion)
+        end
     else
       .
     end
@@ -286,6 +308,7 @@ jq \
       publishLatest: $publishLatest,
       windowsPackageVersion: $windowsPackageVersion,
       windowsAppVersion: $windowsAppVersion,
+      windowsArm64AppVersion: $windowsArm64AppVersion,
       macosCommonShortVersion: $mac[0].commonShortVersion,
       macosCommonBundleVersion: $mac[0].commonBundleVersion,
       macosVersionsMatch: $mac[0].versionsMatch,
@@ -294,6 +317,20 @@ jq \
   ' "$probe_manifest" > "$tmp_manifest"
 mv "$tmp_manifest" release-manifest.json
 
+windows_selected_files=()
+if [[ "$include_windows" == "true" ]]; then
+  windows_selected_files+=("$windows_x64_msix")
+  if [[ "$windows_arm64_downloadable" == "true" && -n "$windows_arm64_msix" ]]; then
+    windows_selected_files+=("$windows_arm64_msix")
+  fi
+
+  {
+    for file in "${windows_selected_files[@]}"; do
+      write_checksum "$file"
+    done
+  } > "$artifacts_dir/codex-windows/SHA256SUMS-windows.txt"
+fi
+
 {
   if [[ "$include_macos" == "true" ]]; then
     while IFS= read -r -d '' file; do
@@ -301,9 +338,9 @@ mv "$tmp_manifest" release-manifest.json
     done < <(find "$artifacts_dir/codex-macos" -type f ! -name macos-metadata.json -print0 | sort -z)
   fi
   if [[ "$include_windows" == "true" ]]; then
-    while IFS= read -r -d '' file; do
+    for file in "${windows_selected_files[@]}" "$artifacts_dir/codex-windows/SHA256SUMS-windows.txt"; do
       write_checksum "$file"
-    done < <(find "$artifacts_dir/codex-windows" -type f -print0 | sort -z)
+    done
   fi
   write_checksum release-manifest.json release-manifest.json
 } > SHA256SUMS.txt
@@ -349,6 +386,10 @@ mv "$tmp_manifest" release-manifest.json
         echo "| Windows ARM64 | \`${windows_app_version}\` | \`${windows_arm64_package_version:-$windows_package_version}\` | $(table_cell "$windows_arm64_last_modified") | ${published_at_label} | 已发布 |"
       elif [[ "$windows_arm64_missing_reason" == "skipped-rollout-drift" ]]; then
         echo "| Windows ARM64 | \`${windows_app_version}\` | \`${windows_arm64_package_version:-$windows_package_version}\` |  |  | 下载阶段上游版本漂移，待下次探测补齐（\`${windows_arm64_status}\`） |"
+      elif [[ "$windows_arm64_missing_reason" == "skipped-version-mismatch" ]]; then
+        echo "| Windows ARM64 | \`${windows_arm64_app_version}\` | \`${windows_arm64_package_version:-$windows_package_version}\` |  |  | 内部版本与 Windows x64 \`${windows_app_version}\` 不一致，待下次探测补齐（\`${windows_arm64_status}\`） |"
+      elif [[ "$windows_arm64_missing_reason" == "skipped-version-unreadable" ]]; then
+        echo "| Windows ARM64 |  | \`${windows_arm64_package_version:-$windows_package_version}\` |  |  | 无法读取内部版本，待下次探测补齐（\`${windows_arm64_status}\`） |"
       else
         echo "| Windows ARM64 | \`${windows_app_version}\` | \`${windows_arm64_package_version:-$windows_package_version}\` |  |  | Microsoft Store 目录已出现，下载 URL 待解析（\`${windows_arm64_status:-catalog-only}\`） |"
       fi
@@ -439,6 +480,10 @@ mv "$tmp_manifest" release-manifest.json
         echo "| Windows ARM64 | \`${windows_app_version}\` | \`${windows_arm64_package_version:-$windows_package_version}\` | $(table_cell "$windows_arm64_last_modified") | ${published_at_label} | Published |"
       elif [[ "$windows_arm64_missing_reason" == "skipped-rollout-drift" ]]; then
         echo "| Windows ARM64 | \`${windows_app_version}\` | \`${windows_arm64_package_version:-$windows_package_version}\` |  |  | Upstream version drifted during download; will be completed on the next probe (\`${windows_arm64_status}\`) |"
+      elif [[ "$windows_arm64_missing_reason" == "skipped-version-mismatch" ]]; then
+        echo "| Windows ARM64 | \`${windows_arm64_app_version}\` | \`${windows_arm64_package_version:-$windows_package_version}\` |  |  | Internal version differs from Windows x64 \`${windows_app_version}\`; will be completed on the next probe (\`${windows_arm64_status}\`) |"
+      elif [[ "$windows_arm64_missing_reason" == "skipped-version-unreadable" ]]; then
+        echo "| Windows ARM64 |  | \`${windows_arm64_package_version:-$windows_package_version}\` |  |  | Could not read internal version; will be completed on the next probe (\`${windows_arm64_status}\`) |"
       else
         echo "| Windows ARM64 | \`${windows_app_version}\` | \`${windows_arm64_package_version:-$windows_package_version}\` |  |  | Present in Microsoft Store catalog, download URL unresolved (\`${windows_arm64_status:-catalog-only}\`) |"
       fi

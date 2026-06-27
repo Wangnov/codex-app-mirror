@@ -160,6 +160,29 @@ JSON
     test "$(jq -r '.sources.windows.architectures.arm64.status' release-manifest.json)" = "skipped-rollout-drift"
   )
 
+  cp -R artifacts artifacts-arm64-mismatch
+  cp minimal.Msix artifacts-arm64-mismatch/codex-windows/OpenAI.Codex_1.2.3.4_arm64__2p2nqsd0c76g0.Msix
+  mkdir arm64-mismatch
+  (
+    cd arm64-mismatch
+    WINDOWS_APP_VERSION=1.2.3 "$repo_root/scripts/prepare-release-metadata.sh" \
+      ../probe-manifest-arm64-drift.json \
+      ../macos-metadata.json \
+      ../artifacts-arm64-mismatch \
+      https://example.com > output.txt
+
+    grep -F 'include_windows=true' output.txt
+    grep -F '内部版本与 Windows x64 `1.2.3` 不一致，待下次探测补齐（`skipped-version-mismatch`）' release-notes.md
+    grep -F 'Internal version differs from Windows x64 `1.2.3`; will be completed on the next probe (`skipped-version-mismatch`)' release-notes.md
+    test "$(jq -r '.sources.windows.architectures.arm64.downloadable' release-manifest.json)" = "false"
+    test "$(jq -r '.sources.windows.architectures.arm64.status' release-manifest.json)" = "skipped-version-mismatch"
+    test "$(jq -r '.sources.windows.architectures.arm64.appVersion' release-manifest.json)" = "9.8.7"
+    if grep -E 'OpenAI\.Codex_.*_arm64__' SHA256SUMS.txt ../artifacts-arm64-mismatch/codex-windows/SHA256SUMS-windows.txt; then
+      echo "Skipped ARM64 package should not appear in checksum files." >&2
+      exit 1
+    fi
+  )
+
   mkdir partial
   (
     cd partial
