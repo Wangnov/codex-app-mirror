@@ -21,10 +21,10 @@ trap cleanup EXIT
 
 mkdir -p "$tmp_dir/bin"
 
-latest_tag="codex-app-win-26.608.1337.0-mac-26.608.12217-b3722"
-# win (downloadable 26.608) + mac (advanced 26.609) -> a brand-new combination
-# whose predicted tag does not exist yet, so release_exists must 404.
-predicted_tag="codex-app-win-26.608.1337.0-mac-26.609.41114-b3888"
+latest_tag="codex-app-26.608.12217"
+# win (downloadable 26.608) + mac (advanced 26.609) should still release.
+# The exact canonical tag is derived later after the Windows MSIX is downloaded
+# and its internal Codex version can be read.
 package="OpenAI.Codex_26.608.1337.0_x64__2p2nqsd0c76g0"
 gh_log="$tmp_dir/gh.log"
 : > "$gh_log"
@@ -118,12 +118,6 @@ case "$url" in
     ;;
   repos/\{owner\}/\{repo\}/releases/tags/"${TEST_LATEST_TAG}")
     printf '{"tag_name":"%s","assets":[{"name":"release-manifest.json","url":"https://api.example/assets/release-manifest"},{"name":"SHA256SUMS.txt","url":"https://api.example/assets/checksums"}]}\n' "$TEST_LATEST_TAG"
-    ;;
-  repos/\{owner\}/\{repo\}/releases/tags/"${TEST_PREDICTED_TAG}")
-    # The win608+mac609 combination has never been released; behave like GitHub's
-    # 404 so release_exists() reports "does not exist" and does not veto.
-    echo "gh: Not Found (HTTP 404)" >&2
-    exit 1
     ;;
   https://api.example/assets/release-manifest)
     cat "${TEST_LATEST_MANIFEST:?TEST_LATEST_MANIFEST must be set}"
@@ -248,7 +242,6 @@ chmod +x "$tmp_dir/bin/curl"
   PATH="$tmp_dir/bin:$PATH" \
   TEST_GH_LOG="$gh_log" \
   TEST_LATEST_TAG="$latest_tag" \
-  TEST_PREDICTED_TAG="$predicted_tag" \
   TEST_LATEST_MANIFEST="$tmp_dir/latest-release-manifest.json" \
   STORE_LINK_MAX_ATTEMPTS=1 \
   MANIFEST_PATH="$tmp_dir/probe-manifest.json" \

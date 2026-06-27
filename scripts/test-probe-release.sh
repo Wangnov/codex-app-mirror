@@ -16,8 +16,7 @@ trap cleanup EXIT
 
 mkdir -p "$tmp_dir/bin"
 
-latest_tag="codex-app-force-20260611-010101"
-predicted_tag="codex-app-win-1.2.3.4-mac-1.2.3-b5"
+latest_tag="codex-app-1.2.3"
 package="OpenAI.Codex_1.2.3.4_x64__2p2nqsd0c76g0"
 gh_log="$tmp_dir/gh.log"
 : > "$gh_log"
@@ -238,9 +237,6 @@ case "$url" in
   repos/\{owner\}/\{repo\}/releases/tags/"${TEST_LATEST_TAG}")
     printf '{"tag_name":"%s","assets":[{"name":"release-manifest.json","url":"https://api.example/assets/release-manifest"},{"name":"SHA256SUMS.txt","url":"https://api.example/assets/checksums"}]}\n' "$TEST_LATEST_TAG"
     ;;
-  repos/\{owner\}/\{repo\}/releases/tags/"${TEST_PREDICTED_TAG}")
-    printf '{"tag_name":"%s","assets":[]}\n' "$TEST_PREDICTED_TAG"
-    ;;
   https://api.example/assets/release-manifest)
     cat "${TEST_LATEST_MANIFEST:?TEST_LATEST_MANIFEST must be set}"
     ;;
@@ -399,7 +395,6 @@ chmod +x "$tmp_dir/bin/curl"
   PATH="$tmp_dir/bin:$PATH" \
   TEST_GH_LOG="$gh_log" \
   TEST_LATEST_TAG="$latest_tag" \
-  TEST_PREDICTED_TAG="$predicted_tag" \
   TEST_LATEST_MANIFEST="$tmp_dir/latest-release-manifest.json" \
   TEST_LATEST_CHECKSUMS="$tmp_dir/latest-SHA256SUMS.txt" \
   TEST_PUBLIC_MANIFEST="$tmp_dir/public-manifest.json" \
@@ -416,16 +411,5 @@ grep -F "latest_tag=$latest_tag" "$tmp_dir/output.txt"
 grep -F "latest release $latest_tag matches current sources, but public mirror aliases or appcasts are stale; republishing" "$tmp_dir/output.txt"
 test "$(jq -r '.sources.windows.architectures.arm64.status' "$tmp_dir/probe-manifest.json")" = "catalog-only"
 test "$(jq -r '.sources.windows.architectures.arm64.packageMoniker' "$tmp_dir/probe-manifest.json")" = "OpenAI.Codex_1.2.3.4_arm64__2p2nqsd0c76g0"
-
-if grep -F "release_tag=$predicted_tag" "$tmp_dir/output.txt"; then
-  echo "probe-release.sh overwrote the latest-tag fallback with the predicted tag." >&2
-  exit 1
-fi
-
-if grep -F "releases/tags/$predicted_tag" "$gh_log"; then
-  echo "probe-release.sh should not query the predicted tag after selecting a latest-tag fallback." >&2
-  cat "$gh_log" >&2
-  exit 1
-fi
 
 echo "probe-release fixture test PASS"

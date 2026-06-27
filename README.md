@@ -87,7 +87,7 @@
 |---|---|
 | Windows x64（兼容别名） | <https://codexapp.agentsmirror.com/latest/win> |
 | Windows x64 | <https://codexapp.agentsmirror.com/latest/win-x64> |
-| Windows ARM64 | <https://codexapp.agentsmirror.com/latest/win-arm64> |
+| Windows ARM64（当前版本可用时） | <https://codexapp.agentsmirror.com/latest/win-arm64> |
 | Apple Silicon Mac | <https://codexapp.agentsmirror.com/latest/mac-arm64> |
 | Intel Mac | <https://codexapp.agentsmirror.com/latest/mac-intel> |
 | 校验和 | <https://codexapp.agentsmirror.com/latest/checksums> |
@@ -140,13 +140,18 @@ macOS 版除了手动下载 DMG，还支持 **Sparkle 增量自动更新**。下
 
 ## 版本号说明
 
-Windows 和 macOS 的版本号来自不同上游包，不保证完全一致。Windows MSIX 使用 Microsoft Store 包名里的四段版本，例如 `26.513.3673.0`；macOS 使用 DMG 内 `Codex.app/Contents/Info.plist` 的 `CFBundleShortVersionString` 和 `CFBundleVersion`，例如 `26.513.31313` build `2867`。
+Release 以 Codex 应用内部版本聚合，而不是以 Windows Store 的四段 MSIX 包版本命名。Windows MSIX 包名里的四段版本（例如 `26.623.5175.0`）仍会记录在 release body 和 `release-manifest.json` 的平台包字段里；Codex 内部版本来自 Windows 包内的应用 `package.json`，并与 macOS `CFBundleShortVersionString` 对齐，例如 `26.623.41415`。
 
-Release tag 会同时写明两边版本：
+Release tag 与标题使用内部版本：
 
 ```text
-codex-app-win-26.513.3673.0-mac-26.513.31313-b2867
+codex-app-26.623.41415
+Codex App Mirror 26.623.41415
 ```
+
+当某个平台尚未发布同一内部版本时，会先创建该内部版本的 prerelease，并在 body 的“版本与发布时间”表格中把缺失平台标记为待官方发布。平台补齐后，同一个 Release 会被补全并提升为正式 latest。
+
+Windows x64 是 Windows 平台的必需包；Windows ARM64 是可选架构。如果 Microsoft Store 在探测和下载之间发生 ARM64 rollout 漂移，本轮会跳过 ARM64、清理 `latest/win-arm64` 短链，并在后续探测到稳定包时补上。
 
 当前 Windows 包名形如：
 
@@ -244,7 +249,7 @@ Or use the CDN short links (recommended — **auto-routed to the fastest node**:
 |---|---|
 | Windows x64 (compat alias) | <https://codexapp.agentsmirror.com/latest/win> |
 | Windows x64 | <https://codexapp.agentsmirror.com/latest/win-x64> |
-| Windows ARM64 | <https://codexapp.agentsmirror.com/latest/win-arm64> |
+| Windows ARM64 (when available for the current version) | <https://codexapp.agentsmirror.com/latest/win-arm64> |
 | Apple Silicon Mac | <https://codexapp.agentsmirror.com/latest/mac-arm64> |
 | Intel Mac | <https://codexapp.agentsmirror.com/latest/mac-intel> |
 | Checksums | <https://codexapp.agentsmirror.com/latest/checksums> |
@@ -297,13 +302,18 @@ This mirror isn't only for manual downloads — it's the update backend for the 
 
 ## Version numbers
 
-Windows and macOS versions come from different upstream packages and are not guaranteed to match. The Windows MSIX version comes from the Microsoft Store package moniker, e.g. `26.513.3673.0`. The macOS version comes from `Codex.app/Contents/Info.plist` inside the DMG (`CFBundleShortVersionString` / `CFBundleVersion`), e.g. `26.513.31313` build `2867`.
+Releases are grouped by the Codex app's internal version, not by the four-part Windows Store MSIX package version. The Windows package version from the MSIX moniker (for example `26.623.5175.0`) is still recorded in the release body and `release-manifest.json` as platform package metadata. The Codex app version is read from the Windows package's app `package.json` and aligned with macOS `CFBundleShortVersionString`, for example `26.623.41415`.
 
-Release tags include both:
+Release tags and titles use the internal version:
 
 ```text
-codex-app-win-26.513.3673.0-mac-26.513.31313-b2867
+codex-app-26.623.41415
+Codex App Mirror 26.623.41415
 ```
+
+If one platform has not yet published the same internal version, the mirror creates a prerelease for that internal version and marks the missing platform as waiting in the "Versions and publish times" table. Once the missing platform arrives, the same Release is completed and promoted to latest.
+
+Windows x64 is the required Windows package; Windows ARM64 is an optional architecture. If the Microsoft Store ARM64 rollout drifts between probe and download, that run skips ARM64, removes the `latest/win-arm64` short link, and fills it back in once a stable ARM64 package is detected.
 
 ## Windows "blocked by your system administrator"
 

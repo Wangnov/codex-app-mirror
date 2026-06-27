@@ -19,7 +19,10 @@ printf '0' > "$counter_path"
 
 expected_package="OpenAI.Codex_26.616.4196.0_x64__2p2nqsd0c76g0"
 old_package="OpenAI.Codex_26.616.3767.0_x64__2p2nqsd0c76g0"
+expected_arm64_package="OpenAI.Codex_26.616.4196.0_arm64__2p2nqsd0c76g0"
+changed_arm64_package="OpenAI.Codex_26.616.5000.0_arm64__2p2nqsd0c76g0"
 printf 'win' > "$tmp_dir/server/$expected_package.Msix"
+printf 'arm64-new' > "$tmp_dir/server/$changed_arm64_package.Msix"
 
 cat > "$tmp_dir/bin/dotnet" <<'DOTNET'
 #!/usr/bin/env bash
@@ -30,6 +33,14 @@ case "${1:-}" in
     printf 'fake dotnet info\n'
     ;;
   run)
+    if [[ "$*" == *" arm64" ]]; then
+      printf '%s\thttp://127.0.0.1:%s/%s.Msix\n' \
+        "${TEST_CHANGED_ARM64_PACKAGE:?TEST_CHANGED_ARM64_PACKAGE must be set}" \
+        "${TEST_HTTP_PORT:?TEST_HTTP_PORT must be set}" \
+        "$TEST_CHANGED_ARM64_PACKAGE"
+      exit 0
+    fi
+
     count="$(cat "${TEST_STORE_LINK_COUNTER:?TEST_STORE_LINK_COUNTER must be set}")"
     count=$((count + 1))
     printf '%s' "$count" > "$TEST_STORE_LINK_COUNTER"
@@ -101,9 +112,9 @@ cat > "$tmp_dir/probe-manifest.json" <<JSON
         },
         "arm64": {
           "architecture": "arm64",
-          "status": "catalog-only",
-          "downloadable": false,
-          "packageMoniker": "OpenAI.Codex_26.616.4196.0_arm64__2p2nqsd0c76g0",
+          "status": "downloadable",
+          "downloadable": true,
+          "packageMoniker": "$expected_arm64_package",
           "contentLength": 4
         }
       }
@@ -118,6 +129,7 @@ JSON
   TEST_STORE_LINK_COUNTER="$counter_path" \
   TEST_OLD_PACKAGE="$old_package" \
   TEST_EXPECTED_PACKAGE="$expected_package" \
+  TEST_CHANGED_ARM64_PACKAGE="$changed_arm64_package" \
   TEST_HTTP_PORT="$port" \
     pwsh -NoLogo -NoProfile -File scripts/download-windows.ps1 \
       -OutDir "$tmp_dir/out" \
@@ -128,7 +140,12 @@ JSON
 
 test "$(cat "$counter_path")" = "2"
 test -f "$tmp_dir/out/$expected_package.Msix"
-test ! -f "$tmp_dir/out/OpenAI.Codex_26.616.4196.0_arm64__2p2nqsd0c76g0.Msix"
+test ! -f "$tmp_dir/out/$expected_arm64_package.Msix"
+test ! -f "$tmp_dir/out/$changed_arm64_package.Msix"
 grep -F "$expected_package.Msix" "$tmp_dir/out/SHA256SUMS-windows.txt"
+if grep -F 'arm64' "$tmp_dir/out/SHA256SUMS-windows.txt"; then
+  echo "Optional ARM64 drift should not appear in SHA256SUMS-windows.txt." >&2
+  exit 1
+fi
 
 echo "download-windows retry fixture PASS"

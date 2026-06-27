@@ -11,7 +11,8 @@ hosted runner.
 3. The Workflow reads R2 in ranges and uploads objects to an IHEP staging prefix.
 4. It copies staging objects to `latest/*` on IHEP, committing `latest/manifest`
    after installers, Sparkle archives, checksums, and appcasts.
-5. It prunes stale `latest/mac/*` Sparkle archives outside the grace window and
+5. It removes stale latest aliases that are absent from the current manifest,
+   prunes stale `latest/mac/*` Sparkle archives outside the grace window, and
    removes staging objects.
 
 ## Required secrets
@@ -41,7 +42,7 @@ Start a sync:
 curl -fsS "$CF_SECONDARY_SYNC_URL/sync/start" \
   -H "Authorization: Bearer $CF_SECONDARY_SYNC_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"releaseTag":"codex-app-win-...","force":false}'
+  -d '{"releaseTag":"codex-app-26.623.41415","force":false}'
 ```
 
 Check status:

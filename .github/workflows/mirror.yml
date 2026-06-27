@@ -141,6 +141,7 @@ jobs:
             "$RELEASE_TAG"
 
       - name: Build macOS Sparkle appcasts
+        if: steps.meta.outputs.include_macos == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -153,50 +154,82 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ steps.meta.outputs.tag }}
           RELEASE_TITLE: ${{ steps.meta.outputs.title }}
+          INCLUDE_WINDOWS: ${{ steps.meta.outputs.include_windows }}
+          INCLUDE_MACOS: ${{ steps.meta.outputs.include_macos }}
+          PRERELEASE: ${{ steps.meta.outputs.prerelease }}
+          PUBLISH_LATEST: ${{ steps.meta.outputs.publish_latest }}
         shell: bash
         run: |
           set -euo pipefail
-          # The Sparkle .zip archives are checksummed in SHA256SUMS.txt, so attach
-          # them to the Release too (keeps every listed checksum downloadable and
-          # gives the archives a canonical immutable home alongside the mirror).
-          arm_short_version="$(jq -r '.sources.macos.arm64.appcast.shortVersionString' release-manifest.json)"
-          x64_short_version="$(jq -r '.sources.macos.x64.appcast.shortVersionString' release-manifest.json)"
-          mac_arm64_zip="artifacts/codex-macos/Codex-darwin-arm64-${arm_short_version}.zip"
-          mac_intel_zip="artifacts/codex-macos/Codex-darwin-x64-${x64_short_version}.zip"
-          test -f "$mac_arm64_zip"
-          test -f "$mac_intel_zip"
-
-          mapfile -d '' windows_assets < <(find artifacts/codex-windows -maxdepth 1 -type f -print0 | sort -z)
-          if [[ "${#windows_assets[@]}" -eq 0 ]]; then
-            echo "No Windows release assets found." >&2
-            exit 1
-          fi
-
           release_assets=(
-            artifacts/codex-macos/Codex-mac-arm64.dmg
-            artifacts/codex-macos/Codex-mac-x64.dmg
-            "$mac_arm64_zip"
-            "$mac_intel_zip"
-            artifacts/codex-macos/SHA256SUMS-macos.txt
-            "${windows_assets[@]}"
             assets/status.png
             release-manifest.json
             SHA256SUMS.txt
           )
 
-          while IFS= read -r bn; do
-            [[ -z "$bn" ]] && continue
-            release_assets+=("artifacts/codex-macos/$bn")
-          done < <(
-            jq -r '
-              .sources.macos.arm64.appcast.deltas[]?.basename // empty,
-              .sources.macos.x64.appcast.deltas[]?.basename // empty
-            ' release-manifest.json
-          )
+          if [[ "$INCLUDE_MACOS" == "true" ]]; then
+            # The Sparkle .zip archives are checksummed in SHA256SUMS.txt, so
+            # attach them to the Release too. This keeps every listed checksum
+            # downloadable and gives the archives a canonical immutable home.
+            arm_short_version="$(jq -r '.sources.macos.arm64.appcast.shortVersionString' release-manifest.json)"
+            x64_short_version="$(jq -r '.sources.macos.x64.appcast.shortVersionString' release-manifest.json)"
+            mac_arm64_zip="artifacts/codex-macos/Codex-darwin-arm64-${arm_short_version}.zip"
+            mac_intel_zip="artifacts/codex-macos/Codex-darwin-x64-${x64_short_version}.zip"
+            test -f "$mac_arm64_zip"
+            test -f "$mac_intel_zip"
+
+            release_assets+=(
+              artifacts/codex-macos/Codex-mac-arm64.dmg
+              artifacts/codex-macos/Codex-mac-x64.dmg
+              "$mac_arm64_zip"
+              "$mac_intel_zip"
+              artifacts/codex-macos/SHA256SUMS-macos.txt
+            )
+
+            while IFS= read -r bn; do
+              [[ -z "$bn" ]] && continue
+              release_assets+=("artifacts/codex-macos/$bn")
+            done < <(
+              jq -r '
+                .sources.macos.arm64.appcast.deltas[]?.basename // empty,
+                .sources.macos.x64.appcast.deltas[]?.basename // empty
+              ' release-manifest.json
+            )
+          fi
+
+          if [[ "$INCLUDE_WINDOWS" == "true" ]]; then
+            mapfile -d '' windows_assets < <(find artifacts/codex-windows -maxdepth 1 -type f -print0 | sort -z)
+            if [[ "${#windows_assets[@]}" -eq 0 ]]; then
+              echo "No Windows release assets found." >&2
+              exit 1
+            fi
+            release_assets+=("${windows_assets[@]}")
+          fi
+
+          if [[ "$INCLUDE_MACOS" != "true" && "$INCLUDE_WINDOWS" != "true" ]]; then
+            echo "No platform assets were selected for release." >&2
+            exit 1
+          fi
 
           for asset in "${release_assets[@]}"; do
             test -f "$asset"
           done
+
+          edit_args=(
+            --title "$RELEASE_TITLE"
+            --notes-file release-notes.md
+          )
+          create_args=(
+            --title "$RELEASE_TITLE"
+            --notes-file release-notes.md
+          )
+          if [[ "$PRERELEASE" == "true" ]]; then
+            edit_args+=(--prerelease)
+            create_args+=(--prerelease --latest=false)
+          else
+            edit_args+=(--prerelease=false --latest)
+            create_args+=(--latest)
+          fi
 
           if existing_assets_json="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets' 2>/dev/null)"; then
             missing_assets=()
@@ -231,10 +264,7 @@ jobs:
               exit 1
             fi
 
-            gh release edit "$RELEASE_TAG" \
-              --title "$RELEASE_TITLE" \
-              --latest \
-              --notes-file release-notes.md
+            gh release edit "$RELEASE_TAG" "${edit_args[@]}"
             if [[ "${#missing_assets[@]}" -gt 0 ]]; then
               gh release upload "$RELEASE_TAG" "${missing_assets[@]}"
             fi
@@ -250,15 +280,11 @@ jobs:
               echo "Release assets were reconciled without bulk clobbering existing downloads."
             fi
           else
-            gh release create "$RELEASE_TAG" \
-              --title "$RELEASE_TITLE" \
-              --latest \
-              --notes-file release-notes.md \
-              "${release_assets[@]}"
+            gh release create "$RELEASE_TAG" "${create_args[@]}" "${release_assets[@]}"
           fi
 
       - name: Remove latest links from previous release notes
-        if: needs.probe.outputs.latest_tag != '' && needs.probe.outputs.latest_tag != steps.meta.outputs.tag
+        if: steps.meta.outputs.publish_latest == 'true' && needs.probe.outputs.latest_tag != '' && needs.probe.outputs.latest_tag != steps.meta.outputs.tag
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -268,6 +294,7 @@ jobs:
         run: bash scripts/remove-latest-links-from-release-notes.sh "$LATEST_TAG"
 
       - name: Ensure AWS CLI
+        if: steps.meta.outputs.publish_latest == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -277,6 +304,7 @@ jobs:
           fi
 
       - name: Sync GitHub Release assets to Cloudflare R2
+        if: steps.meta.outputs.publish_latest == 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -365,6 +393,11 @@ jobs:
           bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/win-x64 "$win_x64_msix" Codex-Windows-x64.msix
           if [[ -n "$win_arm64_msix" && -f "$win_arm64_msix" ]]; then
             bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/win-arm64 "$win_arm64_msix" Codex-Windows-arm64.msix
+          else
+            aws s3 rm "s3://$R2_BUCKET_NAME/latest/win-arm64" \
+              --endpoint-url "$R2_S3_ENDPOINT" \
+              --region "${AWS_DEFAULT_REGION:-auto}" \
+              --only-show-errors
           fi
           bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/checksums SHA256SUMS.txt SHA256SUMS.txt
           bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/manifest release-manifest.json release-manifest.json
@@ -430,6 +463,7 @@ jobs:
             appcast-x64.xml
 
       - name: Trigger Cloudflare secondary S3 sync
+        if: steps.meta.outputs.publish_latest == 'true'
         env:
           CF_SECONDARY_SYNC_URL: ${{ secrets.CF_SECONDARY_SYNC_URL }}
           CF_SECONDARY_SYNC_TOKEN: ${{ secrets.CF_SECONDARY_SYNC_TOKEN }}
