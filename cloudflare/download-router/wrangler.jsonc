@@ -13,5 +13,11 @@
       "pattern": "codexapp.agentsmirror.com/latest/*",
       "zone_id": "a5bae9b722f3c5fe1a24aaebe7a8e663"
     }
+  ],
+  "analytics_engine_datasets": [
+    {
+      "binding": "DOWNLOAD_ANALYTICS",
+      "dataset": "codex_mirror_downloads"
+    }
   ]
 }

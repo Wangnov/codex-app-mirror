@@ -71,6 +71,18 @@ jobs:
         shell: bash
         run: scripts/test-sync-secondary-s3.sh
 
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: cloudflare/download-router/package-lock.json
+
+      - name: Test download router worker
+        shell: bash
+        run: |
+          npm ci --prefix cloudflare/download-router
+          npm run check --prefix cloudflare/download-router
+
       - name: Test appcast generation fixture
         shell: bash
         run: scripts/test-build-appcast.sh
