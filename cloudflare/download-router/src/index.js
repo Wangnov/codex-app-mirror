@@ -10,6 +10,7 @@ export default {
     }
 
     const country = request.cf?.country || request.headers.get("CF-IPCountry") || "";
+    const category = request.method === "GET" ? assetCategoryForPath(url.pathname) : null;
     const secondaryCountryCodes = new Set(
       (env.SECONDARY_COUNTRY_CODES || DEFAULT_SECONDARY_COUNTRY_CODES)
         .split(",")
@@ -37,6 +38,7 @@ export default {
             : {},
         });
 
+        recordDownload(env, "secondary", country, category);
         return redirect(signedUrl);
       } catch (error) {
         console.error(
@@ -54,6 +56,7 @@ export default {
       return new Response("Missing GLOBAL_MIRROR_BASE_URL", { status: 500 });
     }
 
+    recordDownload(env, "global", country, category);
     return redirect(withPathAndSearch(env.GLOBAL_MIRROR_BASE_URL, url.pathname, url.search).toString(), {
       "X-Mirror-Fallback": "global",
     });
@@ -77,6 +80,56 @@ function isAllowedLatestPath(pathname) {
   }
 
   return /^\/latest\/mac\/(arm64|intel)\/[^/]+\.(zip|delta)$/.test(pathname);
+}
+
+function assetCategoryForPath(pathname) {
+  if (
+    pathname === "/latest/win" ||
+    pathname === "/latest/win-x64" ||
+    pathname === "/latest/win-arm64" ||
+    pathname === "/latest/mac-arm64" ||
+    pathname === "/latest/mac-intel"
+  ) {
+    return "installer";
+  }
+  if (pathname.endsWith(".delta")) {
+    return "update-delta";
+  }
+  if (pathname.endsWith(".zip")) {
+    return "update-full";
+  }
+  // checksums / manifest / appcast are polled or verified frequently and are not
+  // user-facing downloads; skipping them keeps Analytics Engine writes far under
+  // the free 100k-points/day allowance.
+  return null;
+}
+
+function recordDownload(env, route, country, category) {
+  if (!category) {
+    return;
+  }
+  const dataset = env.DOWNLOAD_ANALYTICS;
+  if (!dataset) {
+    return;
+  }
+  // writeDataPoint is non-blocking: the point is buffered and flushed by the
+  // runtime after the response is sent, so it adds no latency to the redirect.
+  try {
+    dataset.writeDataPoint({
+      blobs: [route, country || "", category],
+      doubles: [1],
+      indexes: [route],
+    });
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: "download_analytics_write_failed",
+        route,
+        category,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
 }
 
 function hasSecondaryS3Config(env) {
