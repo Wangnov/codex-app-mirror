@@ -56,6 +56,24 @@ print(max([left, right], key=key))
 PY
 }
 
+max_nonempty_codex_versions() {
+  local selected=""
+  local version
+
+  for version in "$@"; do
+    if [[ -z "$version" || "$version" == "null" ]]; then
+      continue
+    fi
+    if [[ -z "$selected" ]]; then
+      selected="$version"
+    else
+      selected="$(max_codex_version "$selected" "$version")"
+    fi
+  done
+
+  printf '%s' "$selected"
+}
+
 find_windows_x64_msix() {
   local dir="$1"
 
@@ -157,11 +175,6 @@ if [[ -n "$mac_x64_appcast_build" && "$mac_x64_appcast_build" != "$mac_x64_build
   echo "macOS Intel DMG build differs from appcast; keeping both: appcast=$mac_x64_appcast_build dmg=$mac_x64_build" >&2
 fi
 
-if [[ "$mac_arm_version" != "$mac_x64_version" ]]; then
-  echo "macOS arm64 and Intel resolve to different Codex versions; one canonical release cannot safely contain both yet: arm64=$mac_arm_version x64=$mac_x64_version" >&2
-  exit 1
-fi
-
 windows_artifacts_dir="$artifacts_dir/codex-windows"
 windows_x64_msix="$(find_windows_x64_msix "$windows_artifacts_dir")"
 windows_arm64_msix="$(find_windows_arm64_msix "$windows_artifacts_dir")"
@@ -200,23 +213,46 @@ if [[ "$windows_arm64_probe_downloadable" == "true" && -n "$windows_arm64_packag
   elif [[ -z "$windows_arm64_app_version" ]]; then
     windows_arm64_status="${windows_arm64_status:-skipped-version-unreadable}"
     windows_arm64_missing_reason="$windows_arm64_status"
-  elif [[ "$windows_arm64_app_version" != "$windows_app_version" ]]; then
-    windows_arm64_status="skipped-version-mismatch"
-    windows_arm64_missing_reason="$windows_arm64_status"
   else
     windows_arm64_downloadable=true
     windows_arm64_status="${windows_arm64_status:-downloadable}"
+    windows_arm64_missing_reason=""
   fi
 fi
 
-mac_codex_version="${mac_common_version:-$mac_arm_version}"
-codex_version="$(max_codex_version "$windows_app_version" "$mac_codex_version")"
+codex_version="$(max_nonempty_codex_versions "$windows_app_version" "$windows_arm64_app_version" "$mac_arm_version" "$mac_x64_version")"
+if [[ -z "$codex_version" ]]; then
+  echo "No downloadable package versions were found." >&2
+  exit 1
+fi
+
 if [[ "$windows_app_version" == "$codex_version" ]]; then
+  include_windows_x64=true
+else
+  include_windows_x64=false
+fi
+if [[ "$windows_arm64_downloadable" == "true" && "$windows_arm64_app_version" == "$codex_version" ]]; then
+  include_windows_arm64=true
+else
+  include_windows_arm64=false
+fi
+if [[ "$mac_arm_version" == "$codex_version" ]]; then
+  include_macos_arm64=true
+else
+  include_macos_arm64=false
+fi
+if [[ "$mac_x64_version" == "$codex_version" ]]; then
+  include_macos_x64=true
+else
+  include_macos_x64=false
+fi
+
+if [[ "$include_windows_x64" == "true" || "$include_windows_arm64" == "true" ]]; then
   include_windows=true
 else
   include_windows=false
 fi
-if [[ "$mac_codex_version" == "$codex_version" ]]; then
+if [[ "$include_macos_arm64" == "true" || "$include_macos_x64" == "true" ]]; then
   include_macos=true
 else
   include_macos=false
@@ -227,7 +263,10 @@ if [[ "$include_windows" != "true" && "$include_macos" != "true" ]]; then
   exit 1
 fi
 
-if [[ "$include_windows" == "true" && "$include_macos" == "true" ]]; then
+if [[ "$include_windows_x64" == "true" &&
+      "$include_windows_arm64" == "true" &&
+      "$include_macos_arm64" == "true" &&
+      "$include_macos_x64" == "true" ]]; then
   prerelease=false
   publish_latest=true
   platform_completeness="complete"
@@ -236,6 +275,7 @@ else
   publish_latest=false
   platform_completeness="partial"
 fi
+sync_latest=true
 
 canonical_tag="codex-app-$(sanitize_tag_part "$codex_version")"
 if [[ -n "$release_tag_override" ]]; then
@@ -262,14 +302,19 @@ jq \
   --arg windowsAppVersion "$windows_app_version" \
   --argjson includeWindows "$include_windows" \
   --argjson includeMacos "$include_macos" \
+  --argjson includeWindowsX64 "$include_windows_x64" \
+  --argjson includeWindowsArm64 "$include_windows_arm64" \
+  --argjson includeMacosArm64 "$include_macos_arm64" \
+  --argjson includeMacosX64 "$include_macos_x64" \
   --argjson prerelease "$prerelease" \
   --argjson publishLatest "$publish_latest" \
+  --argjson syncLatest "$sync_latest" \
   --argjson windowsArm64Downloadable "$windows_arm64_downloadable" \
   --arg windowsArm64Status "$windows_arm64_status" \
   --arg windowsArm64AppVersion "$windows_arm64_app_version" \
   --arg platformCompleteness "$platform_completeness" \
   '
-  .schemaVersion = 3
+  .schemaVersion = 4
   | .codexVersion = $codexVersion
   | .publishedAt = $publishedAt
   | .sources.windows.version = $windowsPackageVersion
@@ -278,9 +323,11 @@ jq \
   | .sources.windows.architectures.x64.appVersion = $windowsAppVersion
   | .sources.windows.architectures.x64.downloadable = true
   | .sources.windows.architectures.x64.status = (.sources.windows.architectures.x64.status // "downloadable")
+  | .sources.windows.architectures.x64.currentForCodexVersion = $includeWindowsX64
   | if .sources.windows.architectures.arm64? != null then
       .sources.windows.architectures.arm64.downloadable = $windowsArm64Downloadable
       | .sources.windows.architectures.arm64.status = $windowsArm64Status
+      | .sources.windows.architectures.arm64.currentForCodexVersion = $includeWindowsArm64
       | if $windowsArm64AppVersion != "" then
           .sources.windows.architectures.arm64.appVersion = $windowsArm64AppVersion
         else
@@ -294,35 +341,86 @@ jq \
   | .sources.macos.arm64.bundleIdentifier = $mac[0].macos.arm64.bundleIdentifier
   | .sources.macos.arm64.minimumSystemVersion = $mac[0].macos.arm64.minimumSystemVersion
   | .sources.macos.arm64.sha256 = $mac[0].macos.arm64.sha256
+  | .sources.macos.arm64.downloadable = true
+  | .sources.macos.arm64.status = "downloadable"
+  | .sources.macos.arm64.currentForCodexVersion = $includeMacosArm64
   | .sources.macos.x64.bundleShortVersion = $mac[0].macos.x64.bundleShortVersion
   | .sources.macos.x64.bundleVersion = $mac[0].macos.x64.bundleVersion
   | .sources.macos.x64.bundleIdentifier = $mac[0].macos.x64.bundleIdentifier
   | .sources.macos.x64.minimumSystemVersion = $mac[0].macos.x64.minimumSystemVersion
   | .sources.macos.x64.sha256 = $mac[0].macos.x64.sha256
+  | .sources.macos.x64.downloadable = true
+  | .sources.macos.x64.status = "downloadable"
+  | .sources.macos.x64.currentForCodexVersion = $includeMacosX64
   | .derived = {
       codexVersion: $codexVersion,
       platformCompleteness: $platformCompleteness,
       includeWindows: $includeWindows,
       includeMacos: $includeMacos,
+      includeWindowsX64: $includeWindowsX64,
+      includeWindowsArm64: $includeWindowsArm64,
+      includeMacosArm64: $includeMacosArm64,
+      includeMacosX64: $includeMacosX64,
       prerelease: $prerelease,
       publishLatest: $publishLatest,
+      syncLatest: $syncLatest,
       windowsPackageVersion: $windowsPackageVersion,
       windowsAppVersion: $windowsAppVersion,
       windowsArm64AppVersion: $windowsArm64AppVersion,
       macosCommonShortVersion: $mac[0].commonShortVersion,
       macosCommonBundleVersion: $mac[0].commonBundleVersion,
       macosVersionsMatch: $mac[0].versionsMatch,
-      missingPlatforms: ([if $includeWindows then empty else "windows" end, if $includeMacos then empty else "macos" end])
+      missingPlatforms: ([if $includeWindows then empty else "windows" end, if $includeMacos then empty else "macos" end]),
+      missingArchitectures: ([
+        if $includeWindowsX64 then empty else "windows-x64" end,
+        if $includeWindowsArm64 then empty else "windows-arm64" end,
+        if $includeMacosArm64 then empty else "macos-arm64" end,
+        if $includeMacosX64 then empty else "macos-x64" end
+      ])
     }
   ' "$probe_manifest" > "$tmp_manifest"
 mv "$tmp_manifest" release-manifest.json
 
-windows_selected_files=()
-if [[ "$include_windows" == "true" ]]; then
-  windows_selected_files+=("$windows_x64_msix")
-  if [[ "$windows_arm64_downloadable" == "true" && -n "$windows_arm64_msix" ]]; then
-    windows_selected_files+=("$windows_arm64_msix")
+macos_arch_files() {
+  local arch_key="$1"
+  local dmg_path="$2"
+  local zip_prefix="$3"
+  local short_version
+  local basename
+
+  printf '%s\n' "$dmg_path"
+
+  short_version="$(jq -r --arg a "$arch_key" '.sources.macos[$a].appcast.shortVersionString // empty' release-manifest.json)"
+  if [[ -n "$short_version" && "$short_version" != "null" ]]; then
+    printf '%s\n' "$artifacts_dir/codex-macos/${zip_prefix}-${short_version}.zip"
   fi
+
+  while IFS= read -r basename; do
+    [[ -n "$basename" ]] || continue
+    printf '%s\n' "$artifacts_dir/codex-macos/$basename"
+  done < <(jq -r --arg a "$arch_key" '.sources.macos[$a].appcast.deltas[]?.basename // empty' release-manifest.json)
+}
+
+require_selected_file() {
+  local file="$1"
+  if [[ ! -f "$file" ]]; then
+    echo "Selected release file does not exist: $file" >&2
+    exit 1
+  fi
+}
+
+windows_selected_files=()
+if [[ "$include_windows_x64" == "true" ]]; then
+  windows_selected_files+=("$windows_x64_msix")
+fi
+if [[ "$include_windows_arm64" == "true" ]]; then
+  windows_selected_files+=("$windows_arm64_msix")
+fi
+
+if [[ "$include_windows" == "true" ]]; then
+  for file in "${windows_selected_files[@]}"; do
+    require_selected_file "$file"
+  done
 
   {
     for file in "${windows_selected_files[@]}"; do
@@ -331,11 +429,35 @@ if [[ "$include_windows" == "true" ]]; then
   } > "$artifacts_dir/codex-windows/SHA256SUMS-windows.txt"
 fi
 
+macos_selected_files=()
+if [[ "$include_macos_arm64" == "true" ]]; then
+  while IFS= read -r file; do
+    [[ -n "$file" ]] || continue
+    require_selected_file "$file"
+    macos_selected_files+=("$file")
+  done < <(macos_arch_files arm64 "$artifacts_dir/codex-macos/Codex-mac-arm64.dmg" Codex-darwin-arm64)
+fi
+if [[ "$include_macos_x64" == "true" ]]; then
+  while IFS= read -r file; do
+    [[ -n "$file" ]] || continue
+    require_selected_file "$file"
+    macos_selected_files+=("$file")
+  done < <(macos_arch_files x64 "$artifacts_dir/codex-macos/Codex-mac-x64.dmg" Codex-darwin-x64)
+fi
+
+if [[ "$include_macos" == "true" ]]; then
+  {
+    for file in "${macos_selected_files[@]}"; do
+      write_checksum "$file"
+    done
+  } > "$artifacts_dir/codex-macos/SHA256SUMS-macos.txt"
+fi
+
 {
   if [[ "$include_macos" == "true" ]]; then
-    while IFS= read -r -d '' file; do
+    for file in "${macos_selected_files[@]}" "$artifacts_dir/codex-macos/SHA256SUMS-macos.txt"; do
       write_checksum "$file"
-    done < <(find "$artifacts_dir/codex-macos" -type f ! -name macos-metadata.json -print0 | sort -z)
+    done
   fi
   if [[ "$include_windows" == "true" ]]; then
     for file in "${windows_selected_files[@]}" "$artifacts_dir/codex-windows/SHA256SUMS-windows.txt"; do
@@ -344,6 +466,29 @@ fi
   fi
   write_checksum release-manifest.json release-manifest.json
 } > SHA256SUMS.txt
+
+latest_checksum_files=()
+while IFS= read -r file; do
+  [[ -n "$file" && -f "$file" ]] || continue
+  latest_checksum_files+=("$file")
+done < <(macos_arch_files arm64 "$artifacts_dir/codex-macos/Codex-mac-arm64.dmg" Codex-darwin-arm64)
+while IFS= read -r file; do
+  [[ -n "$file" && -f "$file" ]] || continue
+  latest_checksum_files+=("$file")
+done < <(macos_arch_files x64 "$artifacts_dir/codex-macos/Codex-mac-x64.dmg" Codex-darwin-x64)
+if [[ -n "$windows_x64_msix" && -f "$windows_x64_msix" ]]; then
+  latest_checksum_files+=("$windows_x64_msix")
+fi
+if [[ "$windows_arm64_downloadable" == "true" && -n "$windows_arm64_msix" && -f "$windows_arm64_msix" ]]; then
+  latest_checksum_files+=("$windows_arm64_msix")
+fi
+
+{
+  for file in "${latest_checksum_files[@]}"; do
+    write_checksum "$file"
+  done
+  write_checksum release-manifest.json release-manifest.json
+} > latest-SHA256SUMS.txt
 
 {
   echo "<!-- release-banner:start -->"
@@ -360,57 +505,71 @@ fi
   echo
   echo "## 下载"
   echo
-  if [[ "$include_windows" == "true" ]]; then
+  if [[ "$include_windows_x64" == "true" ]]; then
     echo "- Windows x64: \`${windows_package}.Msix\`"
-    if [[ "$windows_arm64_downloadable" == "true" && -n "$windows_arm64_package" ]]; then
-      echo "- Windows ARM64: \`${windows_arm64_package}.Msix\`"
+  else
+    echo "- Windows x64: 待官方发布 Codex \`${codex_version}\` 对应 MSIX（当前 latest 保持 \`${windows_app_version}\`）"
+  fi
+  if [[ "$include_windows_arm64" == "true" && -n "$windows_arm64_package" ]]; then
+    echo "- Windows ARM64: \`${windows_arm64_package}.Msix\`"
+  elif [[ -n "$windows_arm64_package" ]]; then
+    if [[ "$windows_arm64_downloadable" == "true" && -n "$windows_arm64_app_version" ]]; then
+      echo "- Windows ARM64: 待官方发布 Codex \`${codex_version}\` 对应 MSIX（当前 latest 保持 \`${windows_arm64_app_version}\`）"
+    else
+      echo "- Windows ARM64: 待官方发布 Codex \`${codex_version}\` 对应可下载 MSIX（\`${windows_arm64_status:-catalog-only}\`）"
     fi
   else
-    echo "- Windows: 待官方发布 Codex \`${codex_version}\` 对应 MSIX"
+    echo "- Windows ARM64: 待官方发布 Codex \`${codex_version}\` 对应 MSIX"
   fi
-  if [[ "$include_macos" == "true" ]]; then
+  if [[ "$include_macos_arm64" == "true" ]]; then
     echo "- macOS Apple Silicon: \`Codex-mac-arm64.dmg\`"
+  else
+    echo "- macOS Apple Silicon: 待官方发布 Codex \`${codex_version}\` 对应 DMG（当前 latest 保持 \`${mac_arm_version}\`）"
+  fi
+  if [[ "$include_macos_x64" == "true" ]]; then
     echo "- macOS Intel: \`Codex-mac-x64.dmg\`"
   else
-    echo "- macOS: 待官方发布 Codex \`${codex_version}\` 对应 DMG"
+    echo "- macOS Intel: 待官方发布 Codex \`${codex_version}\` 对应 DMG（当前 latest 保持 \`${mac_x64_version}\`）"
   fi
   echo
   echo "## 版本与发布时间"
   echo
   echo "| 平台 | Codex 版本 | 平台包 / build | 官方发布时间 | 镜像发布时间 | 状态 |"
   echo "|---|---:|---:|---|---|---|"
-  if [[ "$include_windows" == "true" ]]; then
+  if [[ "$include_windows_x64" == "true" ]]; then
     echo "| Windows x64 | \`${windows_app_version}\` | \`${windows_package_version}\` | $(table_cell "$windows_x64_last_modified") | ${published_at_label} | 已发布 |"
-    if [[ -n "$windows_arm64_package" ]]; then
-      if [[ "$windows_arm64_downloadable" == "true" ]]; then
-        echo "| Windows ARM64 | \`${windows_app_version}\` | \`${windows_arm64_package_version:-$windows_package_version}\` | $(table_cell "$windows_arm64_last_modified") | ${published_at_label} | 已发布 |"
-      elif [[ "$windows_arm64_missing_reason" == "skipped-rollout-drift" ]]; then
-        echo "| Windows ARM64 | \`${windows_app_version}\` | \`${windows_arm64_package_version:-$windows_package_version}\` |  |  | 下载阶段上游版本漂移，待下次探测补齐（\`${windows_arm64_status}\`） |"
-      elif [[ "$windows_arm64_missing_reason" == "skipped-version-mismatch" ]]; then
-        echo "| Windows ARM64 | \`${windows_arm64_app_version}\` | \`${windows_arm64_package_version:-$windows_package_version}\` |  |  | 内部版本与 Windows x64 \`${windows_app_version}\` 不一致，待下次探测补齐（\`${windows_arm64_status}\`） |"
-      elif [[ "$windows_arm64_missing_reason" == "skipped-version-unreadable" ]]; then
-        echo "| Windows ARM64 |  | \`${windows_arm64_package_version:-$windows_package_version}\` |  |  | 无法读取内部版本，待下次探测补齐（\`${windows_arm64_status}\`） |"
-      else
-        echo "| Windows ARM64 | \`${windows_app_version}\` | \`${windows_arm64_package_version:-$windows_package_version}\` |  |  | Microsoft Store 目录已出现，下载 URL 待解析（\`${windows_arm64_status:-catalog-only}\`） |"
-      fi
+  else
+    echo "| Windows x64 | \`${windows_app_version}\` | \`${windows_package_version}\` | $(table_cell "$windows_x64_last_modified") |  | 当前 latest，待目标版本 |"
+  fi
+  if [[ "$include_windows_arm64" == "true" ]]; then
+    echo "| Windows ARM64 | \`${windows_arm64_app_version}\` | \`${windows_arm64_package_version:-$windows_package_version}\` | $(table_cell "$windows_arm64_last_modified") | ${published_at_label} | 已发布 |"
+  elif [[ -n "$windows_arm64_package" ]]; then
+    if [[ "$windows_arm64_downloadable" == "true" ]]; then
+      echo "| Windows ARM64 | \`${windows_arm64_app_version}\` | \`${windows_arm64_package_version:-$windows_package_version}\` | $(table_cell "$windows_arm64_last_modified") |  | 当前 latest，待目标版本 |"
+    elif [[ "$windows_arm64_missing_reason" == "skipped-rollout-drift" ]]; then
+      echo "| Windows ARM64 |  | \`${windows_arm64_package_version:-$windows_package_version}\` |  |  | 下载阶段上游版本漂移，待下次探测补齐（\`${windows_arm64_status}\`） |"
+    elif [[ "$windows_arm64_missing_reason" == "skipped-version-unreadable" ]]; then
+      echo "| Windows ARM64 |  | \`${windows_arm64_package_version:-$windows_package_version}\` |  |  | 无法读取内部版本，待下次探测补齐（\`${windows_arm64_status}\`） |"
+    else
+      echo "| Windows ARM64 |  | \`${windows_arm64_package_version:-$windows_package_version}\` |  |  | Microsoft Store 目录已出现，下载 URL 待解析（\`${windows_arm64_status:-catalog-only}\`） |"
     fi
   else
-    echo "| Windows x64 |  |  |  |  | 待官方发布对应版本 |"
-    if [[ -n "$windows_arm64_package" ]]; then
-      echo "| Windows ARM64 |  |  |  |  | 待官方发布对应版本 |"
-    fi
+    echo "| Windows ARM64 |  |  |  |  | 待官方发布对应版本 |"
   fi
-  if [[ "$include_macos" == "true" ]]; then
+  if [[ "$include_macos_arm64" == "true" ]]; then
     echo "| macOS Apple Silicon | \`${mac_arm_version}\` | build \`${mac_arm_build}\` | $(table_cell "$mac_arm_pub_date") | ${published_at_label} | 已发布 |"
+  else
+    echo "| macOS Apple Silicon | \`${mac_arm_version}\` | build \`${mac_arm_build}\` | $(table_cell "$mac_arm_pub_date") |  | 当前 latest，待目标版本 |"
+  fi
+  if [[ "$include_macos_x64" == "true" ]]; then
     echo "| macOS Intel | \`${mac_x64_version}\` | build \`${mac_x64_build}\` | $(table_cell "$mac_x64_pub_date") | ${published_at_label} | 已发布 |"
   else
-    echo "| macOS Apple Silicon |  |  |  |  | 待官方发布对应版本 |"
-    echo "| macOS Intel |  |  |  |  | 待官方发布对应版本 |"
+    echo "| macOS Intel | \`${mac_x64_version}\` | build \`${mac_x64_build}\` | $(table_cell "$mac_x64_pub_date") |  | 当前 latest，待目标版本 |"
   fi
   echo
   echo "本仓库以 Codex 内部版本聚合平台安装包；Windows MSIX 的四段包版本会单独列在“平台包 / build”列。"
   echo
-  if [[ "$publish_latest" == "true" ]]; then
+  if [[ "$sync_latest" == "true" ]]; then
     echo "<!-- latest-links-cn:start -->"
     echo "## 最新版快速下载"
     echo
@@ -424,10 +583,8 @@ fi
     echo "- 校验和: ${r2_public_base_url}/latest/checksums"
     echo "- Manifest: ${r2_public_base_url}/latest/manifest"
     echo
-    echo "这些链接始终指向当前最新完整镜像版本。如果你正在查看历史 Release，请优先使用该 Release 页面中的附件。"
+    echo "这些 latest 链接按架构滚动：某个架构一旦同步到新版本，该架构用户就能收到；尚未发布该版本的架构会继续指向它自己的当前版本。"
     echo "<!-- latest-links-cn:end -->"
-  else
-    echo "此 Release 是平台补齐前的预发布，不会更新 latest 短链；缺失平台发布后将补齐同一个版本并转为正式 Release。"
   fi
   echo
   echo "## 校验"
@@ -454,57 +611,71 @@ fi
   echo
   echo "## Downloads"
   echo
-  if [[ "$include_windows" == "true" ]]; then
+  if [[ "$include_windows_x64" == "true" ]]; then
     echo "- Windows x64: \`${windows_package}.Msix\`"
-    if [[ "$windows_arm64_downloadable" == "true" && -n "$windows_arm64_package" ]]; then
-      echo "- Windows ARM64: \`${windows_arm64_package}.Msix\`"
+  else
+    echo "- Windows x64: waiting for the official MSIX for Codex \`${codex_version}\` (current latest stays on \`${windows_app_version}\`)"
+  fi
+  if [[ "$include_windows_arm64" == "true" && -n "$windows_arm64_package" ]]; then
+    echo "- Windows ARM64: \`${windows_arm64_package}.Msix\`"
+  elif [[ -n "$windows_arm64_package" ]]; then
+    if [[ "$windows_arm64_downloadable" == "true" && -n "$windows_arm64_app_version" ]]; then
+      echo "- Windows ARM64: waiting for the official MSIX for Codex \`${codex_version}\` (current latest stays on \`${windows_arm64_app_version}\`)"
+    else
+      echo "- Windows ARM64: waiting for a downloadable official MSIX for Codex \`${codex_version}\` (\`${windows_arm64_status:-catalog-only}\`)"
     fi
   else
-    echo "- Windows: waiting for the official MSIX for Codex \`${codex_version}\`"
+    echo "- Windows ARM64: waiting for the official MSIX for Codex \`${codex_version}\`"
   fi
-  if [[ "$include_macos" == "true" ]]; then
+  if [[ "$include_macos_arm64" == "true" ]]; then
     echo "- macOS Apple Silicon: \`Codex-mac-arm64.dmg\`"
+  else
+    echo "- macOS Apple Silicon: waiting for the official DMG for Codex \`${codex_version}\` (current latest stays on \`${mac_arm_version}\`)"
+  fi
+  if [[ "$include_macos_x64" == "true" ]]; then
     echo "- macOS Intel: \`Codex-mac-x64.dmg\`"
   else
-    echo "- macOS: waiting for the official DMG for Codex \`${codex_version}\`"
+    echo "- macOS Intel: waiting for the official DMG for Codex \`${codex_version}\` (current latest stays on \`${mac_x64_version}\`)"
   fi
   echo
   echo "## Versions and publish times"
   echo
   echo "| Platform | Codex version | Platform package / build | Official publish time | Mirror publish time | Status |"
   echo "|---|---:|---:|---|---|---|"
-  if [[ "$include_windows" == "true" ]]; then
+  if [[ "$include_windows_x64" == "true" ]]; then
     echo "| Windows x64 | \`${windows_app_version}\` | \`${windows_package_version}\` | $(table_cell "$windows_x64_last_modified") | ${published_at_label} | Published |"
-    if [[ -n "$windows_arm64_package" ]]; then
-      if [[ "$windows_arm64_downloadable" == "true" ]]; then
-        echo "| Windows ARM64 | \`${windows_app_version}\` | \`${windows_arm64_package_version:-$windows_package_version}\` | $(table_cell "$windows_arm64_last_modified") | ${published_at_label} | Published |"
-      elif [[ "$windows_arm64_missing_reason" == "skipped-rollout-drift" ]]; then
-        echo "| Windows ARM64 | \`${windows_app_version}\` | \`${windows_arm64_package_version:-$windows_package_version}\` |  |  | Upstream version drifted during download; will be completed on the next probe (\`${windows_arm64_status}\`) |"
-      elif [[ "$windows_arm64_missing_reason" == "skipped-version-mismatch" ]]; then
-        echo "| Windows ARM64 | \`${windows_arm64_app_version}\` | \`${windows_arm64_package_version:-$windows_package_version}\` |  |  | Internal version differs from Windows x64 \`${windows_app_version}\`; will be completed on the next probe (\`${windows_arm64_status}\`) |"
-      elif [[ "$windows_arm64_missing_reason" == "skipped-version-unreadable" ]]; then
-        echo "| Windows ARM64 |  | \`${windows_arm64_package_version:-$windows_package_version}\` |  |  | Could not read internal version; will be completed on the next probe (\`${windows_arm64_status}\`) |"
-      else
-        echo "| Windows ARM64 | \`${windows_app_version}\` | \`${windows_arm64_package_version:-$windows_package_version}\` |  |  | Present in Microsoft Store catalog, download URL unresolved (\`${windows_arm64_status:-catalog-only}\`) |"
-      fi
+  else
+    echo "| Windows x64 | \`${windows_app_version}\` | \`${windows_package_version}\` | $(table_cell "$windows_x64_last_modified") |  | Current latest, waiting for target version |"
+  fi
+  if [[ "$include_windows_arm64" == "true" ]]; then
+    echo "| Windows ARM64 | \`${windows_arm64_app_version}\` | \`${windows_arm64_package_version:-$windows_package_version}\` | $(table_cell "$windows_arm64_last_modified") | ${published_at_label} | Published |"
+  elif [[ -n "$windows_arm64_package" ]]; then
+    if [[ "$windows_arm64_downloadable" == "true" ]]; then
+      echo "| Windows ARM64 | \`${windows_arm64_app_version}\` | \`${windows_arm64_package_version:-$windows_package_version}\` | $(table_cell "$windows_arm64_last_modified") |  | Current latest, waiting for target version |"
+    elif [[ "$windows_arm64_missing_reason" == "skipped-rollout-drift" ]]; then
+      echo "| Windows ARM64 |  | \`${windows_arm64_package_version:-$windows_package_version}\` |  |  | Upstream version drifted during download; will be retried on the next probe (\`${windows_arm64_status}\`) |"
+    elif [[ "$windows_arm64_missing_reason" == "skipped-version-unreadable" ]]; then
+      echo "| Windows ARM64 |  | \`${windows_arm64_package_version:-$windows_package_version}\` |  |  | Could not read internal version; will be retried on the next probe (\`${windows_arm64_status}\`) |"
+    else
+      echo "| Windows ARM64 |  | \`${windows_arm64_package_version:-$windows_package_version}\` |  |  | Present in Microsoft Store catalog, download URL unresolved (\`${windows_arm64_status:-catalog-only}\`) |"
     fi
   else
-    echo "| Windows x64 |  |  |  |  | Waiting for matching upstream package |"
-    if [[ -n "$windows_arm64_package" ]]; then
-      echo "| Windows ARM64 |  |  |  |  | Waiting for matching upstream package |"
-    fi
+    echo "| Windows ARM64 |  |  |  |  | Waiting for matching upstream package |"
   fi
-  if [[ "$include_macos" == "true" ]]; then
+  if [[ "$include_macos_arm64" == "true" ]]; then
     echo "| macOS Apple Silicon | \`${mac_arm_version}\` | build \`${mac_arm_build}\` | $(table_cell "$mac_arm_pub_date") | ${published_at_label} | Published |"
+  else
+    echo "| macOS Apple Silicon | \`${mac_arm_version}\` | build \`${mac_arm_build}\` | $(table_cell "$mac_arm_pub_date") |  | Current latest, waiting for target version |"
+  fi
+  if [[ "$include_macos_x64" == "true" ]]; then
     echo "| macOS Intel | \`${mac_x64_version}\` | build \`${mac_x64_build}\` | $(table_cell "$mac_x64_pub_date") | ${published_at_label} | Published |"
   else
-    echo "| macOS Apple Silicon |  |  |  |  | Waiting for matching upstream package |"
-    echo "| macOS Intel |  |  |  |  | Waiting for matching upstream package |"
+    echo "| macOS Intel | \`${mac_x64_version}\` | build \`${mac_x64_build}\` | $(table_cell "$mac_x64_pub_date") |  | Current latest, waiting for target version |"
   fi
   echo
   echo "This mirror groups platform installers by the Codex app's internal version; the four-part Windows MSIX package version is listed separately in the platform package / build column."
   echo
-  if [[ "$publish_latest" == "true" ]]; then
+  if [[ "$sync_latest" == "true" ]]; then
     echo "<!-- latest-links-en:start -->"
     echo "## Latest quick downloads"
     echo
@@ -518,10 +689,8 @@ fi
     echo "- Checksums: ${r2_public_base_url}/latest/checksums"
     echo "- Manifest: ${r2_public_base_url}/latest/manifest"
     echo
-    echo "These links always point to the newest complete mirrored version. If you are viewing a historical Release, prefer the assets attached to that Release page."
+    echo "These latest links roll forward per architecture: once an architecture is mirrored, users on that architecture can receive it immediately; architectures not yet published for this Codex version continue to point at their own current latest package."
     echo "<!-- latest-links-en:end -->"
-  else
-    echo "This is a prerelease while platform coverage is incomplete. It does not update latest quick links; when the missing platform ships, this same version will be completed and promoted to a regular Release."
   fi
   echo
   echo "## Verification"
@@ -544,8 +713,13 @@ if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
     github_output_value "codex_version" "$codex_version"
     github_output_value "include_windows" "$include_windows"
     github_output_value "include_macos" "$include_macos"
+    github_output_value "include_windows_x64" "$include_windows_x64"
+    github_output_value "include_windows_arm64" "$include_windows_arm64"
+    github_output_value "include_macos_arm64" "$include_macos_arm64"
+    github_output_value "include_macos_x64" "$include_macos_x64"
     github_output_value "prerelease" "$prerelease"
     github_output_value "publish_latest" "$publish_latest"
+    github_output_value "sync_latest" "$sync_latest"
     github_output_value "platform_completeness" "$platform_completeness"
   } >> "$GITHUB_OUTPUT"
 fi
@@ -555,6 +729,11 @@ echo "title=$title"
 echo "codex_version=$codex_version"
 echo "include_windows=$include_windows"
 echo "include_macos=$include_macos"
+echo "include_windows_x64=$include_windows_x64"
+echo "include_windows_arm64=$include_windows_arm64"
+echo "include_macos_arm64=$include_macos_arm64"
+echo "include_macos_x64=$include_macos_x64"
 echo "prerelease=$prerelease"
 echo "publish_latest=$publish_latest"
+echo "sync_latest=$sync_latest"
 echo "platform_completeness=$platform_completeness"

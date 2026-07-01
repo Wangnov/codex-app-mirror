@@ -498,29 +498,41 @@ public_mirror_object_size_matches() {
 }
 
 public_mirror_checksums_match() {
-  local tag="$1"
+  local manifest="$1"
   local dir
-
-  [[ -n "$tag" ]] || return 1
+  local expected_name
 
   dir="$(mktemp -d)"
-  if ! download_release_asset "$tag" SHA256SUMS.txt "$dir" >/dev/null 2>&1; then
-    rm -rf "$dir"
-    return 1
-  fi
-
   if ! curl_get "public mirror checksums" "$r2_public_base_url/latest/checksums?probe=$$" > "$dir/live-SHA256SUMS.txt"; then
     rm -rf "$dir"
     return 1
   fi
 
-  if cmp -s "$dir/SHA256SUMS.txt" "$dir/live-SHA256SUMS.txt"; then
-    rm -rf "$dir"
-    return 0
-  fi
+  while IFS= read -r expected_name; do
+    [[ -n "$expected_name" ]] || continue
+    if ! grep -F "  $expected_name" "$dir/live-SHA256SUMS.txt" >/dev/null; then
+      rm -rf "$dir"
+      return 1
+    fi
+  done < <(
+    jq -r '
+      "release-manifest.json",
+      ((.sources.windows.architectures.x64.packageMoniker // .sources.windows.packageMoniker // empty) + ".Msix"),
+      (if .sources.windows.architectures.arm64.downloadable == true
+        then ((.sources.windows.architectures.arm64.packageMoniker // empty) + ".Msix")
+        else empty
+      end),
+      "Codex-mac-arm64.dmg",
+      "Codex-mac-x64.dmg",
+      ("Codex-darwin-arm64-" + (.sources.macos.arm64.appcast.shortVersionString // empty) + ".zip"),
+      ("Codex-darwin-x64-" + (.sources.macos.x64.appcast.shortVersionString // empty) + ".zip"),
+      (.sources.macos.arm64.appcast.deltas[]?.basename // empty),
+      (.sources.macos.x64.appcast.deltas[]?.basename // empty)
+    ' "$manifest"
+  )
 
   rm -rf "$dir"
-  return 1
+  return 0
 }
 
 public_mirror_delta_objects_match() {
@@ -597,7 +609,7 @@ public_mirror_latest_matches() {
 
   public_mirror_manifest_key_matches "$manifest" &&
     public_mirror_appcasts_match "$manifest" &&
-    public_mirror_checksums_match "$tag" &&
+    public_mirror_checksums_match "$manifest" &&
     public_mirror_objects_match "$manifest"
 }
 
@@ -911,6 +923,9 @@ else
           release_tag_fallback="$latest_tag"
           skip_reason="latest release $latest_tag matches current sources, but public mirror aliases or appcasts are stale; republishing"
         fi
+      elif public_mirror_latest_matches "$manifest_path" "$latest_tag"; then
+        should_release="false"
+        skip_reason="public mirror latest already matches current sources; GitHub latest remains $latest_tag until all architectures are complete"
       fi
     else
       assets_json="$(release_assets_json "$latest_tag")"

@@ -141,7 +141,7 @@ jobs:
             "$RELEASE_TAG"
 
       - name: Build macOS Sparkle appcasts
-        if: steps.meta.outputs.include_macos == 'true'
+        if: steps.meta.outputs.sync_latest == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -156,6 +156,10 @@ jobs:
           RELEASE_TITLE: ${{ steps.meta.outputs.title }}
           INCLUDE_WINDOWS: ${{ steps.meta.outputs.include_windows }}
           INCLUDE_MACOS: ${{ steps.meta.outputs.include_macos }}
+          INCLUDE_WINDOWS_X64: ${{ steps.meta.outputs.include_windows_x64 }}
+          INCLUDE_WINDOWS_ARM64: ${{ steps.meta.outputs.include_windows_arm64 }}
+          INCLUDE_MACOS_ARM64: ${{ steps.meta.outputs.include_macos_arm64 }}
+          INCLUDE_MACOS_X64: ${{ steps.meta.outputs.include_macos_x64 }}
           PRERELEASE: ${{ steps.meta.outputs.prerelease }}
           PUBLISH_LATEST: ${{ steps.meta.outputs.publish_latest }}
         shell: bash
@@ -167,43 +171,46 @@ jobs:
             SHA256SUMS.txt
           )
 
-          if [[ "$INCLUDE_MACOS" == "true" ]]; then
-            # The Sparkle .zip archives are checksummed in SHA256SUMS.txt, so
-            # attach them to the Release too. This keeps every listed checksum
-            # downloadable and gives the archives a canonical immutable home.
-            arm_short_version="$(jq -r '.sources.macos.arm64.appcast.shortVersionString' release-manifest.json)"
-            x64_short_version="$(jq -r '.sources.macos.x64.appcast.shortVersionString' release-manifest.json)"
-            mac_arm64_zip="artifacts/codex-macos/Codex-darwin-arm64-${arm_short_version}.zip"
-            mac_intel_zip="artifacts/codex-macos/Codex-darwin-x64-${x64_short_version}.zip"
-            test -f "$mac_arm64_zip"
-            test -f "$mac_intel_zip"
+          add_macos_arch_assets() {
+            local arch_key="$1"
+            local dmg="$2"
+            local zip_prefix="$3"
+            local short_version
+            local zip
+            local bn
 
-            release_assets+=(
-              artifacts/codex-macos/Codex-mac-arm64.dmg
-              artifacts/codex-macos/Codex-mac-x64.dmg
-              "$mac_arm64_zip"
-              "$mac_intel_zip"
-              artifacts/codex-macos/SHA256SUMS-macos.txt
-            )
-
+            short_version="$(jq -r --arg a "$arch_key" '.sources.macos[$a].appcast.shortVersionString' release-manifest.json)"
+            zip="artifacts/codex-macos/${zip_prefix}-${short_version}.zip"
+            test -f "$dmg"
+            test -f "$zip"
+            release_assets+=("$dmg" "$zip")
             while IFS= read -r bn; do
               [[ -z "$bn" ]] && continue
               release_assets+=("artifacts/codex-macos/$bn")
             done < <(
-              jq -r '
-                .sources.macos.arm64.appcast.deltas[]?.basename // empty,
-                .sources.macos.x64.appcast.deltas[]?.basename // empty
-              ' release-manifest.json
+              jq -r --arg a "$arch_key" '.sources.macos[$a].appcast.deltas[]?.basename // empty' release-manifest.json
             )
+          }
+
+          if [[ "$INCLUDE_MACOS_ARM64" == "true" ]]; then
+            add_macos_arch_assets arm64 artifacts/codex-macos/Codex-mac-arm64.dmg Codex-darwin-arm64
+          fi
+          if [[ "$INCLUDE_MACOS_X64" == "true" ]]; then
+            add_macos_arch_assets x64 artifacts/codex-macos/Codex-mac-x64.dmg Codex-darwin-x64
+          fi
+          if [[ "$INCLUDE_MACOS" == "true" ]]; then
+            test -f artifacts/codex-macos/SHA256SUMS-macos.txt
+            release_assets+=(artifacts/codex-macos/SHA256SUMS-macos.txt)
           fi
 
           if [[ "$INCLUDE_WINDOWS" == "true" ]]; then
             windows_assets=()
-            win_x64_msix="$(find artifacts/codex-windows -maxdepth 1 -type f \( -name '*_x64__*.Msix' -o -name '*_x64__*.msix' \) | sort | head -n 1)"
-            test -f "$win_x64_msix"
-            windows_assets+=("$win_x64_msix")
-
-            if [[ "$(jq -r '.sources.windows.architectures.arm64.downloadable // false' release-manifest.json)" == "true" ]]; then
+            if [[ "$INCLUDE_WINDOWS_X64" == "true" ]]; then
+              win_x64_msix="$(find artifacts/codex-windows -maxdepth 1 -type f \( -name '*_x64__*.Msix' -o -name '*_x64__*.msix' \) | sort | head -n 1)"
+              test -f "$win_x64_msix"
+              windows_assets+=("$win_x64_msix")
+            fi
+            if [[ "$INCLUDE_WINDOWS_ARM64" == "true" ]]; then
               win_arm64_msix="$(find artifacts/codex-windows -maxdepth 1 -type f \( -name '*_arm64__*.Msix' -o -name '*_arm64__*.msix' \) | sort | head -n 1)"
               test -f "$win_arm64_msix"
               windows_assets+=("$win_arm64_msix")
@@ -322,7 +329,7 @@ jobs:
         run: bash scripts/remove-latest-links-from-release-notes.sh "$LATEST_TAG"
 
       - name: Ensure AWS CLI
-        if: steps.meta.outputs.publish_latest == 'true'
+        if: steps.meta.outputs.sync_latest == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -332,7 +339,7 @@ jobs:
           fi
 
       - name: Sync GitHub Release assets to Cloudflare R2
-        if: steps.meta.outputs.publish_latest == 'true'
+        if: steps.meta.outputs.sync_latest == 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -396,7 +403,7 @@ jobs:
             if [[ "$win_arm64_downloadable" == "true" && -n "$win_arm64_msix" && -f "$win_arm64_msix" ]]; then
               bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/win-arm64" "$win_arm64_msix" Codex-Windows-arm64.msix
             fi
-            bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/checksums" SHA256SUMS.txt SHA256SUMS.txt
+            bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/checksums" latest-SHA256SUMS.txt SHA256SUMS.txt
             bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/manifest" release-manifest.json release-manifest.json
           }
 
@@ -422,13 +429,8 @@ jobs:
           bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/win-x64 "$win_x64_msix" Codex-Windows-x64.msix
           if [[ "$win_arm64_downloadable" == "true" && -n "$win_arm64_msix" && -f "$win_arm64_msix" ]]; then
             bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/win-arm64 "$win_arm64_msix" Codex-Windows-arm64.msix
-          else
-            aws s3 rm "s3://$R2_BUCKET_NAME/latest/win-arm64" \
-              --endpoint-url "$R2_S3_ENDPOINT" \
-              --region "${AWS_DEFAULT_REGION:-auto}" \
-              --only-show-errors
           fi
-          bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/checksums SHA256SUMS.txt SHA256SUMS.txt
+          bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/checksums latest-SHA256SUMS.txt SHA256SUMS.txt
           bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/manifest release-manifest.json release-manifest.json
 
           # Sparkle archives first, then the appcasts that reference them, so the
@@ -492,7 +494,7 @@ jobs:
             appcast-x64.xml
 
       - name: Trigger Cloudflare secondary S3 sync
-        if: steps.meta.outputs.publish_latest == 'true'
+        if: steps.meta.outputs.sync_latest == 'true'
         env:
           CF_SECONDARY_SYNC_URL: ${{ secrets.CF_SECONDARY_SYNC_URL }}
           CF_SECONDARY_SYNC_TOKEN: ${{ secrets.CF_SECONDARY_SYNC_TOKEN }}
