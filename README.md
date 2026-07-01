@@ -149,9 +149,9 @@ codex-app-26.623.41415
 Codex App Mirror 26.623.41415
 ```
 
-当某个平台尚未发布同一内部版本时，会先创建该内部版本的 prerelease，并在 body 的“版本与发布时间”表格中把缺失平台标记为待官方发布。平台补齐后，同一个 Release 会被补全并提升为正式 latest。
+当某个平台尚未发布同一内部版本时，会先创建该内部版本的 prerelease，并在 body 的“版本与发布时间”表格中把缺失平台标记为待官方发布。已发布的架构会立即推进 R2/S3 `latest/*` 短链；尚未发布该版本的架构会继续指向它自己的当前 latest。四个架构补齐后，同一个 Release 会被补全并提升为正式 latest。
 
-Windows x64 是 Windows 平台的必需包；Windows ARM64 是可选架构。如果 Microsoft Store 在探测和下载之间发生 ARM64 rollout 漂移，本轮会跳过 ARM64、清理 `latest/win-arm64` 短链，并在后续探测到稳定包时补上。
+Windows x64 是 Windows 平台的必需包；Windows ARM64 是可选架构。如果 Microsoft Store 在探测和下载之间发生 ARM64 rollout 漂移，本轮会跳过本地 ARM64 上传，并保留上一份校验匹配的 `latest/win-arm64`；后续探测到稳定包时再补上。
 
 当前 Windows 包名形如：
 
@@ -311,9 +311,9 @@ codex-app-26.623.41415
 Codex App Mirror 26.623.41415
 ```
 
-If one platform has not yet published the same internal version, the mirror creates a prerelease for that internal version and marks the missing platform as waiting in the "Versions and publish times" table. Once the missing platform arrives, the same Release is completed and promoted to latest.
+If one platform has not yet published the same internal version, the mirror creates a prerelease for that internal version and marks the missing platform as waiting in the "Versions and publish times" table. Architectures that have shipped immediately advance the R2/S3 `latest/*` short links; architectures that have not shipped that version keep pointing at their own current latest package. Once all four architectures arrive, the same Release is completed and promoted to latest.
 
-Windows x64 is the required Windows package; Windows ARM64 is an optional architecture. If the Microsoft Store ARM64 rollout drifts between probe and download, that run skips ARM64, removes the `latest/win-arm64` short link, and fills it back in once a stable ARM64 package is detected.
+Windows x64 is the required Windows package; Windows ARM64 is an optional architecture. If the Microsoft Store ARM64 rollout drifts between probe and download, that run skips the local ARM64 upload and preserves the previous checksum-matching `latest/win-arm64`; it is replaced once a stable ARM64 package is detected.
 
 ## Windows "blocked by your system administrator"
 

@@ -33,6 +33,7 @@ PY
 }
 
 mkdir -p "$tmp_dir/artifacts/codex-macos" "$tmp_dir/artifacts/codex-windows"
+mkdir -p "$tmp_dir/bin"
 
 printf 'arm' > "$tmp_dir/artifacts/codex-macos/Codex-mac-arm64.dmg"
 printf 'x64' > "$tmp_dir/artifacts/codex-macos/Codex-mac-x64.dmg"
@@ -154,6 +155,9 @@ JSON
   test "$(jq -r '.schemaVersion' release-manifest.json)" = "4"
   test "$(jq -r '.derived.missingArchitectures | length' release-manifest.json)" = "0"
   test "$(jq -r '.sources.windows.architectures.arm64.currentForCodexVersion' release-manifest.json)" = "true"
+  test "$(jq -r '.sources.windows.architectures.arm64.currentLocalArtifact' release-manifest.json)" = "true"
+  test "$(jq -r '.derived.latestChecksums["Codex-mac-arm64.dmg"] | test("^[0-9a-f]{64}$")' release-manifest.json)" = "true"
+  test "$(jq -r '.derived.latestChecksums["OpenAI.Codex_1.2.3.4_arm64__2p2nqsd0c76g0.Msix"] | test("^[0-9a-f]{64}$")' release-manifest.json)" = "true"
 
   if grep -F 'artifacts/' SHA256SUMS.txt; then
     echo "SHA256SUMS.txt should use basenames, not CI artifact paths." >&2
@@ -185,6 +189,194 @@ JSON
     fi
   )
 
+  cat > previous-release-manifest.json <<'JSON'
+{
+  "schemaVersion": 4,
+  "sources": {
+    "windows": {
+      "architectures": {
+        "arm64": {
+          "architecture": "arm64",
+          "status": "downloadable",
+          "downloadable": true,
+          "version": "1.2.2.4",
+          "appVersion": "1.2.2",
+          "packageMoniker": "OpenAI.Codex_1.2.2.4_arm64__2p2nqsd0c76g0",
+          "contentLength": 12,
+          "lastModified": "Wed, 10 Jun 2026 00:00:00 GMT"
+        }
+      }
+    }
+  }
+}
+JSON
+  cat > previous-SHA256SUMS.txt <<'SUMS'
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  OpenAI.Codex_1.2.2.4_arm64__2p2nqsd0c76g0.Msix
+SUMS
+  cat > bin/curl <<'CURL'
+#!/usr/bin/env bash
+set -euo pipefail
+
+url="${*: -1}"
+case "$url" in
+  *latest/manifest*)
+    cat ../previous-release-manifest.json
+    ;;
+  *latest/checksums*)
+    cat ../previous-SHA256SUMS.txt
+    ;;
+  *)
+    echo "unexpected curl URL: $url" >&2
+    exit 1
+    ;;
+esac
+CURL
+  chmod +x bin/curl
+  mkdir arm64-drift-preserve
+  (
+    cd arm64-drift-preserve
+    PATH="../bin:$PATH" \
+    INHERIT_LATEST_FROM_MIRROR=true \
+    WINDOWS_APP_VERSION=1.2.3 "$repo_root/scripts/prepare-release-metadata.sh" \
+      ../probe-manifest.json \
+      ../macos-metadata.json \
+      ../artifacts-arm64-drift \
+      https://example.com > output.txt
+
+    grep -F 'include_windows_arm64=false' output.txt
+    grep -F 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  OpenAI.Codex_1.2.2.4_arm64__2p2nqsd0c76g0.Msix' latest-SHA256SUMS.txt
+    if grep -F 'OpenAI.Codex_1.2.2.4_arm64__2p2nqsd0c76g0.Msix' SHA256SUMS.txt; then
+      echo "Preserved ARM64 package should not appear in this release checksum." >&2
+      exit 1
+    fi
+    test "$(jq -r '.sources.windows.architectures.arm64.downloadable' release-manifest.json)" = "true"
+    test "$(jq -r '.sources.windows.architectures.arm64.appVersion' release-manifest.json)" = "1.2.2"
+    test "$(jq -r '.sources.windows.architectures.arm64.currentForCodexVersion' release-manifest.json)" = "false"
+    test "$(jq -r '.sources.windows.architectures.arm64.currentLocalArtifact' release-manifest.json)" = "false"
+    test "$(jq -r '.sources.windows.architectures.arm64.preservedFromLatest' release-manifest.json)" = "true"
+    test "$(jq -r '.derived.latestChecksums["OpenAI.Codex_1.2.2.4_arm64__2p2nqsd0c76g0.Msix"]' release-manifest.json)" = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  )
+
+  cp -R artifacts artifacts-arm64-unreadable
+  printf 'not a zip' > artifacts-arm64-unreadable/codex-windows/OpenAI.Codex_1.2.3.4_arm64__2p2nqsd0c76g0.Msix
+  mkdir arm64-unreadable-preserve
+  (
+    cd arm64-unreadable-preserve
+    PATH="../bin:$PATH" \
+    INHERIT_LATEST_FROM_MIRROR=true \
+    WINDOWS_APP_VERSION=1.2.3 "$repo_root/scripts/prepare-release-metadata.sh" \
+      ../probe-manifest.json \
+      ../macos-metadata.json \
+      ../artifacts-arm64-unreadable \
+      https://example.com > output.txt
+
+    grep -F 'tag=codex-app-1.2.3' output.txt
+    grep -F 'include_windows_arm64=false' output.txt
+    grep -F 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  OpenAI.Codex_1.2.2.4_arm64__2p2nqsd0c76g0.Msix' latest-SHA256SUMS.txt
+    if grep -F 'OpenAI.Codex_1.2.3.4_arm64__2p2nqsd0c76g0.Msix' latest-SHA256SUMS.txt; then
+      echo "Unreadable local ARM64 package should not overwrite preserved latest checksum." >&2
+      exit 1
+    fi
+    test "$(jq -r '.sources.windows.architectures.arm64.appVersion' release-manifest.json)" = "1.2.2"
+    test "$(jq -r '.sources.windows.architectures.arm64.currentForCodexVersion' release-manifest.json)" = "false"
+    test "$(jq -r '.sources.windows.architectures.arm64.currentLocalArtifact' release-manifest.json)" = "false"
+  )
+
+  cat > previous-release-manifest.json <<'JSON'
+{
+  "schemaVersion": 4,
+  "sources": {
+    "windows": {
+      "architectures": {
+        "arm64": {
+          "architecture": "arm64",
+          "status": "downloadable",
+          "downloadable": true,
+          "version": "1.2.3.4",
+          "appVersion": "1.2.3",
+          "packageMoniker": "OpenAI.Codex_1.2.3.4_arm64__2p2nqsd0c76g0",
+          "contentLength": 12,
+          "lastModified": "Wed, 10 Jun 2026 00:00:00 GMT"
+        }
+      }
+    }
+  }
+}
+JSON
+  cat > previous-SHA256SUMS.txt <<'SUMS'
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  OpenAI.Codex_1.2.3.4_arm64__2p2nqsd0c76g0.Msix
+SUMS
+  mkdir arm64-drift-preserve-same-version
+  (
+    cd arm64-drift-preserve-same-version
+    PATH="../bin:$PATH" \
+    INHERIT_LATEST_FROM_MIRROR=true \
+    WINDOWS_APP_VERSION=1.2.3 "$repo_root/scripts/prepare-release-metadata.sh" \
+      ../probe-manifest.json \
+      ../macos-metadata.json \
+      ../artifacts-arm64-drift \
+      https://example.com > output.txt
+
+    grep -F 'include_windows_arm64=true' output.txt
+    grep -F 'publish_latest=true' output.txt
+    grep -F 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  OpenAI.Codex_1.2.3.4_arm64__2p2nqsd0c76g0.Msix' latest-SHA256SUMS.txt
+    grep -F 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  OpenAI.Codex_1.2.3.4_arm64__2p2nqsd0c76g0.Msix' SHA256SUMS.txt
+    grep -F 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  OpenAI.Codex_1.2.3.4_arm64__2p2nqsd0c76g0.Msix' ../artifacts-arm64-drift/codex-windows/SHA256SUMS-windows.txt
+    test "$(jq -r '.derived.platformCompleteness' release-manifest.json)" = "complete"
+    test "$(jq -r '.sources.windows.architectures.arm64.appVersion' release-manifest.json)" = "1.2.3"
+    test "$(jq -r '.sources.windows.architectures.arm64.currentForCodexVersion' release-manifest.json)" = "true"
+    test "$(jq -r '.sources.windows.architectures.arm64.currentLocalArtifact' release-manifest.json)" = "false"
+    test "$(jq -r '.sources.windows.architectures.arm64.preservedFromLatest' release-manifest.json)" = "true"
+    test "$(jq -r '.derived.latestChecksums["OpenAI.Codex_1.2.3.4_arm64__2p2nqsd0c76g0.Msix"]' release-manifest.json)" = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  )
+
+  cat > previous-release-manifest.json <<'JSON'
+{
+  "schemaVersion": 4,
+  "sources": {
+    "windows": {
+      "architectures": {
+        "arm64": {
+          "architecture": "arm64",
+          "status": "downloadable",
+          "downloadable": true,
+          "version": "1.2.4.4",
+          "appVersion": "1.2.4",
+          "packageMoniker": "OpenAI.Codex_1.2.4.4_arm64__2p2nqsd0c76g0",
+          "contentLength": 12,
+          "lastModified": "Wed, 10 Jun 2026 00:00:00 GMT"
+        }
+      }
+    }
+  }
+}
+JSON
+  cat > previous-SHA256SUMS.txt <<'SUMS'
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  OpenAI.Codex_1.2.4.4_arm64__2p2nqsd0c76g0.Msix
+SUMS
+  mkdir arm64-preserved-newer-than-target
+  (
+    cd arm64-preserved-newer-than-target
+    PATH="../bin:$PATH" \
+    INHERIT_LATEST_FROM_MIRROR=true \
+    WINDOWS_APP_VERSION=1.2.3 "$repo_root/scripts/prepare-release-metadata.sh" \
+      ../probe-manifest.json \
+      ../macos-metadata.json \
+      ../artifacts-arm64-drift \
+      https://example.com > output.txt
+
+    grep -F 'tag=codex-app-1.2.3' output.txt
+    grep -F 'codex_version=1.2.3' output.txt
+    grep -F 'include_windows_x64=true' output.txt
+    grep -F 'include_windows_arm64=false' output.txt
+    grep -F 'include_macos=true' output.txt
+    grep -F 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  OpenAI.Codex_1.2.4.4_arm64__2p2nqsd0c76g0.Msix' latest-SHA256SUMS.txt
+    test "$(jq -r '.sources.windows.architectures.arm64.appVersion' release-manifest.json)" = "1.2.4"
+    test "$(jq -r '.sources.windows.architectures.arm64.currentForCodexVersion' release-manifest.json)" = "false"
+    test "$(jq -r '.sources.windows.architectures.arm64.currentLocalArtifact' release-manifest.json)" = "false"
+    test "$(jq -r '.derived.latestChecksums["OpenAI.Codex_1.2.4.4_arm64__2p2nqsd0c76g0.Msix"]' release-manifest.json)" = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  )
+
   cp -R artifacts artifacts-arm64-new
   cp minimal-9.8.7.Msix artifacts-arm64-new/codex-windows/OpenAI.Codex_1.2.3.4_arm64__2p2nqsd0c76g0.Msix
   mkdir arm64-newer
@@ -212,6 +404,7 @@ JSON
     test "$(jq -r '.sources.windows.architectures.arm64.status' release-manifest.json)" = "downloadable"
     test "$(jq -r '.sources.windows.architectures.arm64.appVersion' release-manifest.json)" = "9.8.7"
     test "$(jq -r '.sources.windows.architectures.arm64.currentForCodexVersion' release-manifest.json)" = "true"
+    test "$(jq -r '.sources.windows.architectures.arm64.currentLocalArtifact' release-manifest.json)" = "true"
     test "$(jq -r '.sources.windows.architectures.x64.currentForCodexVersion' release-manifest.json)" = "false"
   )
 
@@ -243,6 +436,7 @@ JSON
     grep -F 'Codex-darwin-arm64-1.2.4.zip' SHA256SUMS.txt
     grep -F 'Codex-mac-x64.dmg' latest-SHA256SUMS.txt
     grep -F 'OpenAI.Codex_1.2.3.4_x64__2p2nqsd0c76g0.Msix' latest-SHA256SUMS.txt
+    grep -F 'OpenAI.Codex_1.2.3.4_arm64__2p2nqsd0c76g0.Msix' latest-SHA256SUMS.txt
     if grep -F 'Codex-mac-x64.dmg' SHA256SUMS.txt; then
       echo "macOS x64 should stay out of the target release checksum when only arm64 advanced." >&2
       exit 1
@@ -255,6 +449,8 @@ JSON
     test "$(jq -r '.derived.missingArchitectures | index("macos-x64") != null' release-manifest.json)" = "true"
     test "$(jq -r '.sources.macos.arm64.currentForCodexVersion' release-manifest.json)" = "true"
     test "$(jq -r '.sources.macos.x64.currentForCodexVersion' release-manifest.json)" = "false"
+    test "$(jq -r '.sources.windows.architectures.arm64.currentForCodexVersion' release-manifest.json)" = "false"
+    test "$(jq -r '.sources.windows.architectures.arm64.currentLocalArtifact' release-manifest.json)" = "true"
     grep -F '这些 latest 链接按架构滚动' release-notes.md
   )
 

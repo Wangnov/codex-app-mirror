@@ -414,24 +414,53 @@ manifest_key() {
   }' "$1"
 }
 
+public_mirror_current_latest_view() {
+  local manifest="$1"
+  local live_manifest="$2"
+  local output="$3"
+
+  jq '
+    . as $current
+    | input as $live
+    | if
+        (($live.sources.windows.architectures.arm64.preservedFromLatest // false) == true)
+        and (($current.sources.windows.architectures.arm64.downloadable // false) != true)
+      then
+        $current
+        | .sources.windows.architectures.arm64 = $live.sources.windows.architectures.arm64
+      else
+        $current
+      end
+  ' "$manifest" "$live_manifest" > "$output"
+}
+
 public_mirror_manifest_key_matches() {
   local manifest="$1"
+  local dir
   local live_manifest
+  local current_view
   local current_key
   local live_key
 
-  live_manifest="$(mktemp)"
+  dir="$(mktemp -d)"
+  live_manifest="$dir/live-manifest.json"
+  current_view="$dir/current-latest-view.json"
   if ! curl_get "public mirror manifest" "$r2_public_base_url/latest/manifest?probe=$$" > "$live_manifest"; then
-    rm -f "$live_manifest"
+    rm -rf "$dir"
     return 1
   fi
 
-  if ! current_key="$(manifest_key "$manifest")" || ! live_key="$(manifest_key "$live_manifest")"; then
-    rm -f "$live_manifest"
+  if ! public_mirror_current_latest_view "$manifest" "$live_manifest" "$current_view"; then
+    rm -rf "$dir"
     return 1
   fi
 
-  rm -f "$live_manifest"
+  if ! current_key="$(manifest_key "$current_view")" || ! live_key="$(manifest_key "$live_manifest")"; then
+    rm -rf "$dir"
+    return 1
+  fi
+
+  rm -rf "$dir"
   [[ "$current_key" == "$live_key" ]]
 }
 
@@ -500,39 +529,139 @@ public_mirror_object_size_matches() {
 public_mirror_checksums_match() {
   local manifest="$1"
   local dir
-  local expected_name
+  local live_manifest
 
   dir="$(mktemp -d)"
+  live_manifest="$dir/live-manifest.json"
+  if ! curl_get "public mirror manifest" "$r2_public_base_url/latest/manifest?probe=$$" > "$live_manifest"; then
+    rm -rf "$dir"
+    return 1
+  fi
   if ! curl_get "public mirror checksums" "$r2_public_base_url/latest/checksums?probe=$$" > "$dir/live-SHA256SUMS.txt"; then
     rm -rf "$dir"
     return 1
   fi
 
-  while IFS= read -r expected_name; do
-    [[ -n "$expected_name" ]] || continue
-    if ! grep -F "  $expected_name" "$dir/live-SHA256SUMS.txt" >/dev/null; then
-      rm -rf "$dir"
-      return 1
-    fi
-  done < <(
-    jq -r '
-      "release-manifest.json",
-      ((.sources.windows.architectures.x64.packageMoniker // .sources.windows.packageMoniker // empty) + ".Msix"),
-      (if .sources.windows.architectures.arm64.downloadable == true
-        then ((.sources.windows.architectures.arm64.packageMoniker // empty) + ".Msix")
-        else empty
-      end),
-      "Codex-mac-arm64.dmg",
-      "Codex-mac-x64.dmg",
-      ("Codex-darwin-arm64-" + (.sources.macos.arm64.appcast.shortVersionString // empty) + ".zip"),
-      ("Codex-darwin-x64-" + (.sources.macos.x64.appcast.shortVersionString // empty) + ".zip"),
-      (.sources.macos.arm64.appcast.deltas[]?.basename // empty),
-      (.sources.macos.x64.appcast.deltas[]?.basename // empty)
-    ' "$manifest"
-  )
+  if ! jq -e '.derived.latestChecksums | type == "object" and length > 0' "$live_manifest" >/dev/null; then
+    rm -rf "$dir"
+    return 1
+  fi
+
+  if ! jq -r '
+    .derived.latestChecksums
+    | to_entries[]
+    | ((.value | ascii_downcase) + "  " + .key)
+  ' "$live_manifest" | LC_ALL=C sort > "$dir/expected-SHA256SUMS.txt"; then
+    rm -rf "$dir"
+    return 1
+  fi
+  live_manifest_sha="$(sha256sum "$live_manifest" | awk '{print tolower($1)}')"
+  if ! grep -F -q "  release-manifest.json" "$dir/expected-SHA256SUMS.txt"; then
+    printf '%s  release-manifest.json\n' "$live_manifest_sha" >> "$dir/expected-SHA256SUMS.txt"
+  elif ! awk -v expected="$live_manifest_sha" '
+    $2 == "release-manifest.json" && tolower($1) != expected { exit 1 }
+  ' "$dir/expected-SHA256SUMS.txt"; then
+    rm -rf "$dir"
+    return 1
+  fi
+  LC_ALL=C sort -o "$dir/expected-SHA256SUMS.txt" "$dir/expected-SHA256SUMS.txt"
+
+  if ! awk '
+    NF == 0 { next }
+    {
+      digest = $1
+      name = $0
+      sub(/^[^[:space:]]+[[:space:]]+/, "", name)
+      if (digest !~ /^[0-9A-Fa-f]{64}$/ || name == "") {
+        exit 1
+      }
+      print tolower(digest) "  " name
+    }
+  ' "$dir/live-SHA256SUMS.txt" | LC_ALL=C sort > "$dir/actual-SHA256SUMS.txt"; then
+    rm -rf "$dir"
+    return 1
+  fi
+
+  if ! cmp -s "$dir/expected-SHA256SUMS.txt" "$dir/actual-SHA256SUMS.txt"; then
+    rm -rf "$dir"
+    return 1
+  fi
 
   rm -rf "$dir"
   return 0
+}
+
+public_mirror_objects_match() {
+  local manifest="$1"
+  local dir
+  local live_manifest
+  local current_view
+  local arm_short_version
+  local x64_short_version
+
+  dir="$(mktemp -d)"
+  live_manifest="$dir/live-manifest.json"
+  current_view="$dir/current-latest-view.json"
+  if ! curl_get "public mirror manifest" "$r2_public_base_url/latest/manifest?probe=$$" > "$live_manifest"; then
+    rm -rf "$dir"
+    return 1
+  fi
+  if ! public_mirror_current_latest_view "$manifest" "$live_manifest" "$current_view"; then
+    rm -rf "$dir"
+    return 1
+  fi
+
+  manifest="$current_view"
+  arm_short_version="$(jq -r '.sources.macos.arm64.appcast.shortVersionString // ""' "$manifest")"
+  x64_short_version="$(jq -r '.sources.macos.x64.appcast.shortVersionString // ""' "$manifest")"
+
+  if [[ -z "$arm_short_version" || -z "$x64_short_version" ]]; then
+    rm -rf "$dir"
+    return 1
+  fi
+
+  if public_mirror_object_size_matches \
+      "public mirror Windows alias" \
+      "latest/win" \
+      "$(jq -r '.sources.windows.contentLength // 0' "$manifest")" &&
+    public_mirror_object_size_matches \
+      "public mirror Windows x64 alias" \
+      "latest/win-x64" \
+      "$(jq -r '.sources.windows.architectures.x64.contentLength // .sources.windows.contentLength // 0' "$manifest")" &&
+    {
+      if jq -e '.sources.windows.architectures.arm64.downloadable == true' "$manifest" >/dev/null; then
+        public_mirror_object_size_matches \
+          "public mirror Windows arm64 alias" \
+          "latest/win-arm64" \
+          "$(jq -r '.sources.windows.architectures.arm64.contentLength // 0' "$manifest")"
+      else
+        true
+      fi
+    } &&
+    public_mirror_object_size_matches \
+      "public mirror macOS arm64 DMG alias" \
+      "latest/mac-arm64" \
+      "$(jq -r '.sources.macos.arm64.contentLength // 0' "$manifest")" &&
+    public_mirror_object_size_matches \
+      "public mirror macOS x64 DMG alias" \
+      "latest/mac-intel" \
+      "$(jq -r '.sources.macos.x64.contentLength // 0' "$manifest")" &&
+    public_mirror_object_size_matches \
+      "public mirror macOS arm64 Sparkle archive" \
+      "latest/mac/arm64/Codex-darwin-arm64-${arm_short_version}.zip" \
+      "$(jq -r '.sources.macos.arm64.appcast.enclosureLength // 0' "$manifest")" &&
+    public_mirror_object_size_matches \
+      "public mirror macOS x64 Sparkle archive" \
+      "latest/mac/intel/Codex-darwin-x64-${x64_short_version}.zip" \
+      "$(jq -r '.sources.macos.x64.appcast.enclosureLength // 0' "$manifest")" &&
+    public_mirror_delta_objects_match "$manifest" arm64 arm64 &&
+    public_mirror_delta_objects_match "$manifest" x64 intel; then
+    rm -rf "$dir"
+    return 0
+  fi
+
+  rm -rf "$dir"
+  return 1
 }
 
 public_mirror_delta_objects_match() {
@@ -555,52 +684,6 @@ public_mirror_delta_objects_match() {
       | @tsv
     ' "$manifest"
   )
-}
-
-public_mirror_objects_match() {
-  local manifest="$1"
-  local arm_short_version
-  local x64_short_version
-
-  arm_short_version="$(jq -r '.sources.macos.arm64.appcast.shortVersionString // ""' "$manifest")"
-  x64_short_version="$(jq -r '.sources.macos.x64.appcast.shortVersionString // ""' "$manifest")"
-
-  [[ -n "$arm_short_version" && -n "$x64_short_version" ]] || return 1
-
-  public_mirror_object_size_matches \
-    "public mirror Windows alias" \
-    "latest/win" \
-    "$(jq -r '.sources.windows.contentLength // 0' "$manifest")" &&
-  public_mirror_object_size_matches \
-    "public mirror Windows x64 alias" \
-    "latest/win-x64" \
-    "$(jq -r '.sources.windows.architectures.x64.contentLength // .sources.windows.contentLength // 0' "$manifest")" &&
-  if jq -e '.sources.windows.architectures.arm64.downloadable == true' "$manifest" >/dev/null; then
-    public_mirror_object_size_matches \
-      "public mirror Windows arm64 alias" \
-      "latest/win-arm64" \
-      "$(jq -r '.sources.windows.architectures.arm64.contentLength // 0' "$manifest")"
-  else
-    true
-  fi &&
-  public_mirror_object_size_matches \
-    "public mirror macOS arm64 DMG alias" \
-    "latest/mac-arm64" \
-    "$(jq -r '.sources.macos.arm64.contentLength // 0' "$manifest")" &&
-  public_mirror_object_size_matches \
-    "public mirror macOS x64 DMG alias" \
-    "latest/mac-intel" \
-    "$(jq -r '.sources.macos.x64.contentLength // 0' "$manifest")" &&
-  public_mirror_object_size_matches \
-    "public mirror macOS arm64 Sparkle archive" \
-    "latest/mac/arm64/Codex-darwin-arm64-${arm_short_version}.zip" \
-    "$(jq -r '.sources.macos.arm64.appcast.enclosureLength // 0' "$manifest")" &&
-  public_mirror_object_size_matches \
-    "public mirror macOS x64 Sparkle archive" \
-    "latest/mac/intel/Codex-darwin-x64-${x64_short_version}.zip" \
-    "$(jq -r '.sources.macos.x64.appcast.enclosureLength // 0' "$manifest")" &&
-  public_mirror_delta_objects_match "$manifest" arm64 arm64 &&
-  public_mirror_delta_objects_match "$manifest" x64 intel
 }
 
 public_mirror_latest_matches() {

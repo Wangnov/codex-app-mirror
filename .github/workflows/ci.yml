@@ -55,6 +55,10 @@ jobs:
         shell: bash
         run: scripts/test-probe-release.sh
 
+      - name: Test release probe preserved ARM64 fixture
+        shell: bash
+        run: scripts/test-probe-release-preserved-arm64.sh
+
       - name: Test release probe Windows-rollout fixture
         shell: bash
         run: scripts/test-probe-release-windows-rollout.sh

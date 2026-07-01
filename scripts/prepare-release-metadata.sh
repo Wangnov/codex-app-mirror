@@ -110,8 +110,10 @@ require python3
 require sha256sum
 
 tmp_manifest="$(mktemp)"
+tmp_previous_manifest="$(mktemp)"
+tmp_previous_checksums="$(mktemp)"
 cleanup() {
-  rm -f "$tmp_manifest"
+  rm -f "$tmp_manifest" "$tmp_previous_manifest" "$tmp_previous_checksums"
 }
 trap cleanup EXIT
 
@@ -179,6 +181,7 @@ windows_artifacts_dir="$artifacts_dir/codex-windows"
 windows_x64_msix="$(find_windows_x64_msix "$windows_artifacts_dir")"
 windows_arm64_msix="$(find_windows_arm64_msix "$windows_artifacts_dir")"
 windows_arm64_downloadable=false
+windows_arm64_local_latest=false
 windows_arm64_missing_reason="${windows_arm64_status:-catalog-only}"
 windows_arm64_app_version=""
 windows_app_version="${WINDOWS_APP_VERSION:-}"
@@ -215,12 +218,63 @@ if [[ "$windows_arm64_probe_downloadable" == "true" && -n "$windows_arm64_packag
     windows_arm64_missing_reason="$windows_arm64_status"
   else
     windows_arm64_downloadable=true
+    windows_arm64_local_latest=true
     windows_arm64_status="${windows_arm64_status:-downloadable}"
     windows_arm64_missing_reason=""
   fi
 fi
+windows_arm64_release_app_version="$windows_arm64_app_version"
 
-codex_version="$(max_nonempty_codex_versions "$windows_app_version" "$windows_arm64_app_version" "$mac_arm_version" "$mac_x64_version")"
+previous_latest_available=false
+previous_windows_arm64_json="null"
+preserved_windows_arm64_checksum_line=""
+preserved_windows_arm64=false
+if [[ "${INHERIT_LATEST_FROM_MIRROR:-false}" == "true" && "$windows_arm64_downloadable" != "true" ]]; then
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "curl is required when INHERIT_LATEST_FROM_MIRROR=true." >&2
+    exit 1
+  fi
+
+  if curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors --connect-timeout 20 --max-time 120 \
+      "$r2_public_base_url/latest/manifest?prepare=$$" > "$tmp_previous_manifest" &&
+     curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors --connect-timeout 20 --max-time 120 \
+      "$r2_public_base_url/latest/checksums?prepare=$$" > "$tmp_previous_checksums"; then
+    previous_latest_available=true
+  else
+    : > "$tmp_previous_manifest"
+    : > "$tmp_previous_checksums"
+  fi
+fi
+
+if [[ "$previous_latest_available" == "true" &&
+      "$windows_arm64_downloadable" != "true" &&
+      "$(jq -r '.sources.windows.architectures.arm64.downloadable // false' "$tmp_previous_manifest")" == "true" ]]; then
+  previous_windows_arm64_package="$(jq -r '.sources.windows.architectures.arm64.packageMoniker // empty' "$tmp_previous_manifest")"
+  if [[ -n "$previous_windows_arm64_package" ]]; then
+    preserved_windows_arm64_checksum_line="$(
+      awk -v name="${previous_windows_arm64_package}.Msix" '
+        $1 ~ /^[0-9a-fA-F]{64}$/ && $2 == name {
+          print tolower($1) "  " $2
+          exit
+        }
+      ' "$tmp_previous_checksums"
+    )"
+  fi
+
+  if [[ -n "$preserved_windows_arm64_checksum_line" ]]; then
+    previous_windows_arm64_json="$(jq -c '.sources.windows.architectures.arm64' "$tmp_previous_manifest")"
+    windows_arm64_downloadable=true
+    windows_arm64_package="$previous_windows_arm64_package"
+    windows_arm64_package_version="$(jq -r '.sources.windows.architectures.arm64.version // empty' "$tmp_previous_manifest")"
+    windows_arm64_status="$(jq -r '.sources.windows.architectures.arm64.status // "downloadable"' "$tmp_previous_manifest")"
+    windows_arm64_app_version="$(jq -r '.sources.windows.architectures.arm64.appVersion // empty' "$tmp_previous_manifest")"
+    windows_arm64_last_modified="$(jq -r '.sources.windows.architectures.arm64.lastModified // empty' "$tmp_previous_manifest")"
+    windows_arm64_missing_reason=""
+    preserved_windows_arm64=true
+  fi
+fi
+
+codex_version="$(max_nonempty_codex_versions "$windows_app_version" "$windows_arm64_release_app_version" "$mac_arm_version" "$mac_x64_version")"
 if [[ -z "$codex_version" ]]; then
   echo "No downloadable package versions were found." >&2
   exit 1
@@ -231,7 +285,9 @@ if [[ "$windows_app_version" == "$codex_version" ]]; then
 else
   include_windows_x64=false
 fi
-if [[ "$windows_arm64_downloadable" == "true" && "$windows_arm64_app_version" == "$codex_version" ]]; then
+if [[ "$windows_arm64_downloadable" == "true" &&
+      ( "$windows_arm64_release_app_version" == "$codex_version" ||
+        ( "$preserved_windows_arm64" == "true" && "$windows_arm64_app_version" == "$codex_version" ) ) ]]; then
   include_windows_arm64=true
 else
   include_windows_arm64=false
@@ -310,6 +366,8 @@ jq \
   --argjson publishLatest "$publish_latest" \
   --argjson syncLatest "$sync_latest" \
   --argjson windowsArm64Downloadable "$windows_arm64_downloadable" \
+  --argjson windowsArm64LocalLatest "$windows_arm64_local_latest" \
+  --argjson previousWindowsArm64 "$previous_windows_arm64_json" \
   --arg windowsArm64Status "$windows_arm64_status" \
   --arg windowsArm64AppVersion "$windows_arm64_app_version" \
   --arg platformCompleteness "$platform_completeness" \
@@ -324,10 +382,18 @@ jq \
   | .sources.windows.architectures.x64.downloadable = true
   | .sources.windows.architectures.x64.status = (.sources.windows.architectures.x64.status // "downloadable")
   | .sources.windows.architectures.x64.currentForCodexVersion = $includeWindowsX64
-  | if .sources.windows.architectures.arm64? != null then
+  | if $previousWindowsArm64 != null then
+      .sources.windows.architectures.arm64 = ($previousWindowsArm64 + {
+        currentForCodexVersion: $includeWindowsArm64,
+        currentLocalArtifact: false,
+        preservedFromLatest: true
+      })
+    elif .sources.windows.architectures.arm64? != null then
       .sources.windows.architectures.arm64.downloadable = $windowsArm64Downloadable
       | .sources.windows.architectures.arm64.status = $windowsArm64Status
       | .sources.windows.architectures.arm64.currentForCodexVersion = $includeWindowsArm64
+      | .sources.windows.architectures.arm64.currentLocalArtifact = $windowsArm64LocalLatest
+      | .sources.windows.architectures.arm64.preservedFromLatest = false
       | if $windowsArm64AppVersion != "" then
           .sources.windows.architectures.arm64.appVersion = $windowsArm64AppVersion
         else
@@ -414,7 +480,9 @@ if [[ "$include_windows_x64" == "true" ]]; then
   windows_selected_files+=("$windows_x64_msix")
 fi
 if [[ "$include_windows_arm64" == "true" ]]; then
-  windows_selected_files+=("$windows_arm64_msix")
+  if [[ "$preserved_windows_arm64" != "true" ]]; then
+    windows_selected_files+=("$windows_arm64_msix")
+  fi
 fi
 
 if [[ "$include_windows" == "true" ]]; then
@@ -426,6 +494,9 @@ if [[ "$include_windows" == "true" ]]; then
     for file in "${windows_selected_files[@]}"; do
       write_checksum "$file"
     done
+    if [[ "$include_windows_arm64" == "true" && "$preserved_windows_arm64" == "true" && -n "$preserved_windows_arm64_checksum_line" ]]; then
+      printf '%s\n' "$preserved_windows_arm64_checksum_line"
+    fi
   } > "$artifacts_dir/codex-windows/SHA256SUMS-windows.txt"
 fi
 
@@ -453,20 +524,6 @@ if [[ "$include_macos" == "true" ]]; then
   } > "$artifacts_dir/codex-macos/SHA256SUMS-macos.txt"
 fi
 
-{
-  if [[ "$include_macos" == "true" ]]; then
-    for file in "${macos_selected_files[@]}" "$artifacts_dir/codex-macos/SHA256SUMS-macos.txt"; do
-      write_checksum "$file"
-    done
-  fi
-  if [[ "$include_windows" == "true" ]]; then
-    for file in "${windows_selected_files[@]}" "$artifacts_dir/codex-windows/SHA256SUMS-windows.txt"; do
-      write_checksum "$file"
-    done
-  fi
-  write_checksum release-manifest.json release-manifest.json
-} > SHA256SUMS.txt
-
 latest_checksum_files=()
 while IFS= read -r file; do
   [[ -n "$file" && -f "$file" ]] || continue
@@ -479,14 +536,72 @@ done < <(macos_arch_files x64 "$artifacts_dir/codex-macos/Codex-mac-x64.dmg" Cod
 if [[ -n "$windows_x64_msix" && -f "$windows_x64_msix" ]]; then
   latest_checksum_files+=("$windows_x64_msix")
 fi
-if [[ "$windows_arm64_downloadable" == "true" && -n "$windows_arm64_msix" && -f "$windows_arm64_msix" ]]; then
+if [[ "$windows_arm64_local_latest" == "true" && -n "$windows_arm64_msix" && -f "$windows_arm64_msix" ]]; then
   latest_checksum_files+=("$windows_arm64_msix")
 fi
+
+tmp_latest_artifact_checksums="$(mktemp)"
+{
+  for file in "${latest_checksum_files[@]}"; do
+    write_checksum "$file"
+  done
+  if [[ -n "$preserved_windows_arm64_checksum_line" ]]; then
+    printf '%s\n' "$preserved_windows_arm64_checksum_line"
+  fi
+} > "$tmp_latest_artifact_checksums"
+
+latest_checksums_json="$(
+  python3 - "$tmp_latest_artifact_checksums" <<'PY'
+import json
+import re
+import sys
+
+checksums = {}
+for line in open(sys.argv[1], encoding="utf-8"):
+    line = line.strip()
+    if not line:
+        continue
+    parts = line.split(None, 1)
+    if len(parts) != 2:
+        continue
+    digest, name = parts
+    if re.fullmatch(r"[0-9a-fA-F]{64}", digest):
+        checksums[name] = digest.lower()
+print(json.dumps(checksums, sort_keys=True, separators=(",", ":")))
+PY
+)"
+rm -f "$tmp_latest_artifact_checksums"
+
+jq --argjson latestChecksums "$latest_checksums_json" \
+  '.derived.latestChecksums = $latestChecksums' \
+  release-manifest.json > "$tmp_manifest"
+mv "$tmp_manifest" release-manifest.json
+
+{
+  if [[ "$include_macos" == "true" ]]; then
+    for file in "${macos_selected_files[@]}" "$artifacts_dir/codex-macos/SHA256SUMS-macos.txt"; do
+      write_checksum "$file"
+    done
+  fi
+  if [[ "$include_windows" == "true" ]]; then
+    for file in "${windows_selected_files[@]}"; do
+      write_checksum "$file"
+    done
+    if [[ "$include_windows_arm64" == "true" && "$preserved_windows_arm64" == "true" && -n "$preserved_windows_arm64_checksum_line" ]]; then
+      printf '%s\n' "$preserved_windows_arm64_checksum_line"
+    fi
+    write_checksum "$artifacts_dir/codex-windows/SHA256SUMS-windows.txt"
+  fi
+  write_checksum release-manifest.json release-manifest.json
+} > SHA256SUMS.txt
 
 {
   for file in "${latest_checksum_files[@]}"; do
     write_checksum "$file"
   done
+  if [[ -n "$preserved_windows_arm64_checksum_line" ]]; then
+    printf '%s\n' "$preserved_windows_arm64_checksum_line"
+  fi
   write_checksum release-manifest.json release-manifest.json
 } > latest-SHA256SUMS.txt
 

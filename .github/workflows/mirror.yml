@@ -126,6 +126,7 @@ jobs:
         id: meta
         env:
           RELEASE_TAG: ${{ needs.probe.outputs.release_tag }}
+          INHERIT_LATEST_FROM_MIRROR: "true"
         shell: bash
         run: |
           set -euo pipefail
@@ -170,6 +171,9 @@ jobs:
             release-manifest.json
             SHA256SUMS.txt
           )
+          desired_existing_asset_names=()
+          required_existing_asset_names=()
+          declare -A required_existing_asset_sha256=()
 
           add_macos_arch_assets() {
             local arch_key="$1"
@@ -211,9 +215,25 @@ jobs:
               windows_assets+=("$win_x64_msix")
             fi
             if [[ "$INCLUDE_WINDOWS_ARM64" == "true" ]]; then
-              win_arm64_msix="$(find artifacts/codex-windows -maxdepth 1 -type f \( -name '*_arm64__*.Msix' -o -name '*_arm64__*.msix' \) | sort | head -n 1)"
-              test -f "$win_arm64_msix"
-              windows_assets+=("$win_arm64_msix")
+              win_arm64_current_local="$(jq -r '.sources.windows.architectures.arm64.currentLocalArtifact // .sources.windows.architectures.arm64.currentForCodexVersion // false' release-manifest.json)"
+              win_arm64_package="$(jq -r '.sources.windows.architectures.arm64.packageMoniker // empty' release-manifest.json)"
+              if [[ "$win_arm64_current_local" == "true" ]]; then
+                win_arm64_msix="$(find artifacts/codex-windows -maxdepth 1 -type f \( -name '*_arm64__*.Msix' -o -name '*_arm64__*.msix' \) | sort | head -n 1)"
+                test -f "$win_arm64_msix"
+                windows_assets+=("$win_arm64_msix")
+              elif [[ -n "$win_arm64_package" ]]; then
+                win_arm64_expected_sha="$(jq -r --arg name "${win_arm64_package}.Msix" '.derived.latestChecksums[$name] // empty' release-manifest.json)"
+                if [[ -z "$win_arm64_expected_sha" ]]; then
+                  echo "Windows ARM64 is preserved but release-manifest.json has no latest checksum for ${win_arm64_package}.Msix." >&2
+                  exit 1
+                fi
+                desired_existing_asset_names+=("${win_arm64_package}.Msix")
+                required_existing_asset_names+=("${win_arm64_package}.Msix")
+                required_existing_asset_sha256["${win_arm64_package}.Msix"]="$win_arm64_expected_sha"
+              else
+                echo "Windows ARM64 is included but release-manifest.json has no packageMoniker." >&2
+                exit 1
+              fi
             fi
 
             test -f artifacts/codex-windows/SHA256SUMS-windows.txt
@@ -251,6 +271,7 @@ jobs:
             for asset in "${release_assets[@]}"; do
               desired_asset_names+=("$(basename "$asset")")
             done
+            desired_asset_names+=("${desired_existing_asset_names[@]}")
             missing_assets=()
             replacement_assets=()
             mismatched_assets=()
@@ -275,6 +296,22 @@ jobs:
                     mismatched_assets+=("$name (release=$existing_size/$existing_sha local=$local_size/$local_sha)")
                     ;;
                 esac
+              fi
+            done
+            for name in "${required_existing_asset_names[@]}"; do
+              if ! jq -e --arg name "$name" 'any(.[]?; .name == $name)' <<<"$existing_assets_json" >/dev/null; then
+                mismatched_assets+=("$name (preserved release asset is missing)")
+                continue
+              fi
+              expected_sha="${required_existing_asset_sha256[$name]:-}"
+              if [[ -n "$expected_sha" ]]; then
+                existing_digest="$(jq -r --arg name "$name" '.[] | select(.name == $name) | .digest // ""' <<<"$existing_assets_json" | head -n 1)"
+                existing_sha="${existing_digest#sha256:}"
+                if [[ "$existing_sha" == "$existing_digest" || -z "$existing_sha" ]]; then
+                  mismatched_assets+=("$name (preserved release asset has no sha256 digest)")
+                elif [[ "${existing_sha,,}" != "${expected_sha,,}" ]]; then
+                  mismatched_assets+=("$name (preserved release asset sha256 ${existing_sha,,} != manifest ${expected_sha,,})")
+                fi
               fi
             done
             while IFS= read -r name; do
@@ -315,11 +352,16 @@ jobs:
               echo "Release assets were reconciled without bulk clobbering existing downloads."
             fi
           else
+            if [[ "${#required_existing_asset_names[@]}" -gt 0 ]]; then
+              echo "Release $RELEASE_TAG does not exist, but release-manifest.json depends on preserved assets that can only be reused from an existing Release:" >&2
+              printf '  %s\n' "${required_existing_asset_names[@]}" >&2
+              exit 1
+            fi
             gh release create "$RELEASE_TAG" "${create_args[@]}" "${release_assets[@]}"
           fi
 
       - name: Remove latest links from previous release notes
-        if: steps.meta.outputs.publish_latest == 'true' && needs.probe.outputs.latest_tag != '' && needs.probe.outputs.latest_tag != steps.meta.outputs.tag
+        if: steps.meta.outputs.sync_latest == 'true' && needs.probe.outputs.latest_tag != '' && needs.probe.outputs.latest_tag != steps.meta.outputs.tag
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -345,7 +387,10 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
           R2_S3_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+          LATEST_TAG: ${{ needs.probe.outputs.latest_tag }}
         shell: bash
         run: |
           set -euo pipefail
@@ -353,11 +398,70 @@ jobs:
           mac_intel="artifacts/codex-macos/Codex-mac-x64.dmg"
           win_x64_msix="$(find artifacts/codex-windows -maxdepth 1 -type f \( -name '*_x64__*.Msix' -o -name '*_x64__*.msix' \) | sort | head -n 1)"
           win_arm64_msix="$(find artifacts/codex-windows -maxdepth 1 -type f \( -name '*_arm64__*.Msix' -o -name '*_arm64__*.msix' \) | sort | head -n 1 || true)"
+          win_arm64_current_local="$(jq -r '.sources.windows.architectures.arm64.currentLocalArtifact // .sources.windows.architectures.arm64.currentForCodexVersion // false' release-manifest.json)"
           win_arm64_downloadable="$(jq -r '.sources.windows.architectures.arm64.downloadable // false' release-manifest.json)"
+          win_arm64_package="$(jq -r '.sources.windows.architectures.arm64.packageMoniker // empty' release-manifest.json)"
+          win_arm64_app_version="$(jq -r '.sources.windows.architectures.arm64.appVersion // empty' release-manifest.json)"
+          win_arm64_expected_sha=""
+          if [[ -n "$win_arm64_package" ]]; then
+            win_arm64_expected_sha="$(jq -r --arg name "${win_arm64_package}.Msix" '.derived.latestChecksums[$name] // empty' release-manifest.json)"
+          fi
+          win_arm64_alias_source="$win_arm64_current_local"
 
           test -f "$mac_arm64"
           test -f "$mac_intel"
           test -f "$win_x64_msix"
+
+          if [[ "$win_arm64_alias_source" != "true" && "$win_arm64_downloadable" == "true" && -n "$win_arm64_package" ]]; then
+            if [[ -z "$win_arm64_expected_sha" ]]; then
+              echo "Windows ARM64 is advertised by release-manifest.json but ${win_arm64_package}.Msix is missing from derived.latestChecksums." >&2
+              exit 1
+            fi
+            restored_arm64_dir="artifacts/restored-windows-arm64"
+            restored_arm64_asset="$restored_arm64_dir/${win_arm64_package}.Msix"
+            restored_arm64=false
+            mkdir -p "$restored_arm64_dir"
+
+            if aws s3 cp "s3://$R2_BUCKET_NAME/latest/win-arm64" "$restored_arm64_asset" \
+              --endpoint-url "$R2_S3_ENDPOINT" \
+              --region "${AWS_DEFAULT_REGION:-auto}" \
+              --no-progress; then
+              restored_arm64_sha="$(sha256sum "$restored_arm64_asset" | awk '{print tolower($1)}')"
+              if [[ "$restored_arm64_sha" == "${win_arm64_expected_sha,,}" ]]; then
+                echo "Preserving checksum-matching R2 latest/win-arm64 for ${win_arm64_package}.Msix."
+                restored_arm64=true
+              else
+                echo "Existing R2 latest/win-arm64 sha256 $restored_arm64_sha != manifest ${win_arm64_expected_sha,,}; trying GitHub Release assets." >&2
+                rm -f "$restored_arm64_asset"
+              fi
+            fi
+
+            if [[ "$restored_arm64" != "true" ]]; then
+              for source_tag in "$RELEASE_TAG" "${LATEST_TAG:-}" "codex-app-${win_arm64_app_version}"; do
+                [[ -n "$source_tag" && "$source_tag" != "codex-app-" ]] || continue
+                rm -f "$restored_arm64_asset"
+                if gh release download "$source_tag" \
+                  --pattern "${win_arm64_package}.Msix" \
+                  --dir "$restored_arm64_dir" \
+                  --clobber; then
+                  if [[ -f "$restored_arm64_asset" ]]; then
+                    restored_arm64_sha="$(sha256sum "$restored_arm64_asset" | awk '{print tolower($1)}')"
+                    if [[ "$restored_arm64_sha" == "${win_arm64_expected_sha,,}" ]]; then
+                      restored_arm64=true
+                      break
+                    fi
+                    echo "Downloaded ${win_arm64_package}.Msix from $source_tag, but sha256 $restored_arm64_sha != manifest ${win_arm64_expected_sha,,}; trying another source." >&2
+                  fi
+                fi
+              done
+              if [[ "$restored_arm64" != "true" ]]; then
+                echo "Windows ARM64 is advertised by release-manifest.json but no local, R2, or checksum-matching GitHub Release asset was found for ${win_arm64_package}.Msix." >&2
+                exit 1
+              fi
+            fi
+            win_arm64_msix="$restored_arm64_asset"
+            win_arm64_alias_source=true
+          fi
 
           # Sparkle update archives the generated appcasts point at. Their object
           # keys (latest/mac/{arm64,intel}/...) must match the enclosure URLs that
@@ -400,7 +504,7 @@ jobs:
             bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/mac-intel" "$mac_intel" Codex-mac-intel.dmg
             bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/win" "$win_x64_msix" Codex-Windows-x64.msix
             bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/win-x64" "$win_x64_msix" Codex-Windows-x64.msix
-            if [[ "$win_arm64_downloadable" == "true" && -n "$win_arm64_msix" && -f "$win_arm64_msix" ]]; then
+            if [[ "$win_arm64_alias_source" == "true" && -n "$win_arm64_msix" && -f "$win_arm64_msix" ]]; then
               bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/win-arm64" "$win_arm64_msix" Codex-Windows-arm64.msix
             fi
             bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/checksums" latest-SHA256SUMS.txt SHA256SUMS.txt
@@ -427,8 +531,13 @@ jobs:
           bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/mac-intel "$mac_intel" Codex-mac-intel.dmg
           bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/win "$win_x64_msix" Codex-Windows-x64.msix
           bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/win-x64 "$win_x64_msix" Codex-Windows-x64.msix
-          if [[ "$win_arm64_downloadable" == "true" && -n "$win_arm64_msix" && -f "$win_arm64_msix" ]]; then
+          if [[ "$win_arm64_alias_source" == "true" && -n "$win_arm64_msix" && -f "$win_arm64_msix" ]]; then
             bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/win-arm64 "$win_arm64_msix" Codex-Windows-arm64.msix
+          else
+            echo "Removing stale R2 latest/win-arm64 because this manifest does not advertise a checksum-matching ARM64 package."
+            aws s3 rm "s3://$R2_BUCKET_NAME/latest/win-arm64" \
+              --endpoint-url "$R2_S3_ENDPOINT" \
+              --region "${AWS_DEFAULT_REGION:-auto}"
           fi
           bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/checksums latest-SHA256SUMS.txt SHA256SUMS.txt
           bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/manifest release-manifest.json release-manifest.json

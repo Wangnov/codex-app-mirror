@@ -107,6 +107,42 @@ mac_intel_zip="$7"
 appcast_arm64="$8"
 appcast_x64="$9"
 win_arm64_msix="${10:-}"
+win_arm64_mode="$(
+  python3 - "$manifest" "${win_arm64_msix:+has-arg}" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    manifest = json.load(handle)
+has_arg = len(sys.argv) > 2
+
+arm64 = (
+    manifest.get("sources", {})
+    .get("windows", {})
+    .get("architectures", {})
+    .get("arm64", {})
+)
+
+if arm64.get("currentLocalArtifact") is True:
+    mode = "upload"
+elif arm64.get("downloadable") is True:
+    # A preserved ARM64 latest alias is already present on the secondary
+    # bucket. Do not overwrite it with a stale local artifact, and do not
+    # delete it while the manifest still advertises it as downloadable.
+    mode = "keep"
+elif any(key in arm64 for key in ("downloadable", "currentLocalArtifact", "currentForCodexVersion")):
+    mode = "delete"
+else:
+    # Older manifests predate per-architecture current markers; preserve the
+    # legacy positional-argument behavior for those callers.
+    mode = "upload" if has_arg else "keep"
+print(mode)
+PY
+)"
+if [[ "$win_arm64_mode" == "upload" && -z "$win_arm64_msix" ]]; then
+  echo "Manifest marks Windows ARM64 as current, but no ARM64 MSIX was provided." >&2
+  exit 2
+fi
 
 mac_arm64_zip_name="$(basename "$mac_arm64_zip")"
 mac_intel_zip_name="$(basename "$mac_intel_zip")"
@@ -208,12 +244,23 @@ secondary_verify_object_size() {
   echo "Secondary S3 verified $object_path ($actual_size bytes)."
 }
 
+secondary_remove_object() {
+  local object_path="$1"
+
+  echo "Secondary S3 remove: $object_path"
+  aws s3 rm "s3://$SECONDARY_S3_BUCKET/$object_path" \
+    --endpoint-url "$SECONDARY_S3_ENDPOINT" \
+    --region "$region"
+}
+
 secondary_upload_object "$prefix/mac-arm64" "$mac_arm64" Codex-mac-arm64.dmg
 secondary_upload_object "$prefix/mac-intel" "$mac_intel" Codex-mac-intel.dmg
 secondary_upload_object "$prefix/win" "$win_msix" Codex-Windows-x64.msix
 secondary_upload_object "$prefix/win-x64" "$win_msix" Codex-Windows-x64.msix
-if [[ -n "$win_arm64_msix" ]]; then
+if [[ "$win_arm64_mode" == "upload" ]]; then
   secondary_upload_object "$prefix/win-arm64" "$win_arm64_msix" Codex-Windows-arm64.msix
+elif [[ "$win_arm64_mode" == "delete" ]]; then
+  secondary_remove_object "$prefix/win-arm64"
 fi
 
 # Sparkle update archives, keyed to match the appcast enclosure URLs. Upload the
