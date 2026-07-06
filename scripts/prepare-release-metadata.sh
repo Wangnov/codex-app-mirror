@@ -407,6 +407,11 @@ jq \
   | .sources.macos.arm64.bundleIdentifier = $mac[0].macos.arm64.bundleIdentifier
   | .sources.macos.arm64.minimumSystemVersion = $mac[0].macos.arm64.minimumSystemVersion
   | .sources.macos.arm64.sha256 = $mac[0].macos.arm64.sha256
+  | if ($mac[0].macos.arm64.backendVersion // "") != "" then
+      .sources.macos.arm64.backendVersion = $mac[0].macos.arm64.backendVersion
+    else
+      del(.sources.macos.arm64.backendVersion)
+    end
   | .sources.macos.arm64.downloadable = true
   | .sources.macos.arm64.status = "downloadable"
   | .sources.macos.arm64.currentForCodexVersion = $includeMacosArm64
@@ -415,6 +420,11 @@ jq \
   | .sources.macos.x64.bundleIdentifier = $mac[0].macos.x64.bundleIdentifier
   | .sources.macos.x64.minimumSystemVersion = $mac[0].macos.x64.minimumSystemVersion
   | .sources.macos.x64.sha256 = $mac[0].macos.x64.sha256
+  | if ($mac[0].macos.x64.backendVersion // "") != "" then
+      .sources.macos.x64.backendVersion = $mac[0].macos.x64.backendVersion
+    else
+      del(.sources.macos.x64.backendVersion)
+    end
   | .sources.macos.x64.downloadable = true
   | .sources.macos.x64.status = "downloadable"
   | .sources.macos.x64.currentForCodexVersion = $includeMacosX64
@@ -436,6 +446,8 @@ jq \
       macosCommonShortVersion: $mac[0].commonShortVersion,
       macosCommonBundleVersion: $mac[0].commonBundleVersion,
       macosVersionsMatch: $mac[0].versionsMatch,
+      macosArm64BackendVersion: ($mac[0].macos.arm64.backendVersion // ""),
+      macosX64BackendVersion: ($mac[0].macos.x64.backendVersion // ""),
       missingPlatforms: ([if $includeWindows then empty else "windows" end, if $includeMacos then empty else "macos" end]),
       missingArchitectures: ([
         if $includeWindowsX64 then empty else "windows-x64" end,

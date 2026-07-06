@@ -103,6 +103,7 @@ cat > "$tmp_dir/macos-metadata.json" <<'JSON'
     "arm64": {
       "bundleShortVersion": "1.2.3",
       "bundleVersion": "5",
+      "backendVersion": "0.140.1",
       "bundleIdentifier": "com.openai.codex",
       "minimumSystemVersion": "12.0",
       "sha256": "arm64-sha256"
@@ -110,6 +111,7 @@ cat > "$tmp_dir/macos-metadata.json" <<'JSON'
     "x64": {
       "bundleShortVersion": "1.2.3",
       "bundleVersion": "5",
+      "backendVersion": "0.140.2",
       "bundleIdentifier": "com.openai.codex",
       "minimumSystemVersion": "12.0",
       "sha256": "x64-sha256"
@@ -156,6 +158,10 @@ JSON
   test "$(jq -r '.derived.missingArchitectures | length' release-manifest.json)" = "0"
   test "$(jq -r '.sources.windows.architectures.arm64.currentForCodexVersion' release-manifest.json)" = "true"
   test "$(jq -r '.sources.windows.architectures.arm64.currentLocalArtifact' release-manifest.json)" = "true"
+  test "$(jq -r '.sources.macos.arm64.backendVersion' release-manifest.json)" = "0.140.1"
+  test "$(jq -r '.sources.macos.x64.backendVersion' release-manifest.json)" = "0.140.2"
+  test "$(jq -r '.derived.macosArm64BackendVersion' release-manifest.json)" = "0.140.1"
+  test "$(jq -r '.derived.macosX64BackendVersion' release-manifest.json)" = "0.140.2"
   test "$(jq -r '.derived.latestChecksums["Codex-mac-arm64.dmg"] | test("^[0-9a-f]{64}$")' release-manifest.json)" = "true"
   test "$(jq -r '.derived.latestChecksums["OpenAI.Codex_1.2.3.4_arm64__2p2nqsd0c76g0.Msix"] | test("^[0-9a-f]{64}$")' release-manifest.json)" = "true"
 

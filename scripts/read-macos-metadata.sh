@@ -4,6 +4,7 @@ set -euo pipefail
 output_path="${1:-dist/macos/macos-metadata.json}"
 arm64_dmg="${2:-dist/macos/Codex-mac-arm64.dmg}"
 x64_dmg="${3:-dist/macos/Codex-mac-x64.dmg}"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 require() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -84,6 +85,7 @@ inspect_dmg() {
   local bundle_version
   local bundle_id
   local minimum_system_version
+  local backend_version
   local sha256
 
   mount_dmg "$dmg"
@@ -99,6 +101,7 @@ inspect_dmg() {
   bundle_version="$(plist_value "$plist" CFBundleVersion)"
   bundle_id="$(plist_value "$plist" CFBundleIdentifier)"
   minimum_system_version="$(plist_value "$plist" LSMinimumSystemVersion)"
+  backend_version="$(python3 "$script_dir/read-codex-backend-version.py" "$volume/Codex.app" 2>/dev/null || true)"
   sha256="$(shasum -a 256 "$dmg" | awk '{print $1}')"
 
   if [[ -z "$short_version" || -z "$bundle_version" ]]; then
@@ -106,12 +109,12 @@ inspect_dmg() {
     exit 1
   fi
 
-  python3 - "$json_path" "$arch" "$dmg" "$sha256" "$short_version" "$bundle_version" "$bundle_id" "$minimum_system_version" <<'PY'
+  python3 - "$json_path" "$arch" "$dmg" "$sha256" "$short_version" "$bundle_version" "$bundle_id" "$minimum_system_version" "$backend_version" <<'PY'
 import json
 import os
 import sys
 
-out, arch, dmg, sha256, short, build, bundle_id, minimum = sys.argv[1:]
+out, arch, dmg, sha256, short, build, bundle_id, minimum, backend = sys.argv[1:]
 payload = {
     "architecture": arch,
     "fileName": os.path.basename(dmg),
@@ -121,6 +124,8 @@ payload = {
     "bundleIdentifier": bundle_id,
     "minimumSystemVersion": minimum,
 }
+if backend:
+    payload["backendVersion"] = backend
 with open(out, "w", encoding="utf-8") as handle:
     json.dump(payload, handle, indent=2, sort_keys=True)
     handle.write("\n")

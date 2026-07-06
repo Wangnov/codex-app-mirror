@@ -51,6 +51,10 @@ jobs:
         shell: bash
         run: scripts/test-prepare-release-metadata.sh
 
+      - name: Test backend version reader fixture
+        shell: bash
+        run: bash scripts/test-read-codex-backend-version.sh
+
       - name: Test release probe fixture
         shell: bash
         run: scripts/test-probe-release.sh
