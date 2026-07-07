@@ -21,7 +21,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: Wangnov/agents-mirror-kit
-          ref: v0.1.0
+          ref: v0.2.0
           path: .mirror-kit
 
       - uses: actions/setup-dotnet@v5
@@ -85,14 +85,10 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: cloudflare/download-router/package-lock.json
 
-      - name: Test download router worker
+      - name: Validate download router config against kit worker
         shell: bash
-        run: |
-          npm ci --prefix cloudflare/download-router
-          npm run check --prefix cloudflare/download-router
+        run: node cloudflare/download-router/validate-config.mjs
 
       - name: Test appcast generation fixture
         shell: bash
