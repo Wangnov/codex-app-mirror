@@ -6,7 +6,24 @@
   "vars": {
     "GLOBAL_MIRROR_BASE_URL": "https://codexapp-r2.agentsmirror.com",
     "SECONDARY_COUNTRY_CODES": "CN",
-    "SECONDARY_S3_SIGNED_URL_TTL_SECONDS": "3600"
+    "SECONDARY_S3_SIGNED_URL_TTL_SECONDS": "3600",
+    "ROUTE_CONFIG": {
+      "aliases": {
+        "/latest/win": { "category": "installer", "filename": "Codex-Windows-x64.msix", "contentType": "application/vnd.ms-appx" },
+        "/latest/win-x64": { "category": "installer", "filename": "Codex-Windows-x64.msix", "contentType": "application/vnd.ms-appx" },
+        "/latest/win-arm64": { "category": "installer", "filename": "Codex-Windows-arm64.msix", "contentType": "application/vnd.ms-appx" },
+        "/latest/mac-arm64": { "category": "installer", "filename": "Codex-mac-arm64.dmg", "contentType": "application/x-apple-diskimage" },
+        "/latest/mac-intel": { "category": "installer", "filename": "Codex-mac-x64.dmg", "contentType": "application/x-apple-diskimage" },
+        "/latest/checksums": { "category": null, "filename": "SHA256SUMS.txt", "contentType": "text/plain; charset=utf-8" },
+        "/latest/manifest": { "category": null, "filename": "release-manifest.json", "contentType": "application/json" },
+        "/latest/appcast.xml": { "category": null },
+        "/latest/appcast-x64.xml": { "category": null }
+      },
+      "patterns": [
+        { "regex": "^/latest/mac/(arm64|intel)/[^/]+\\.zip$", "category": "update-full" },
+        { "regex": "^/latest/mac/(arm64|intel)/[^/]+\\.delta$", "category": "update-delta" }
+      ]
+    }
   },
   "routes": [
     {
