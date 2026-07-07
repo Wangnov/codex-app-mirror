@@ -110,6 +110,80 @@ jobs:
 
           ./scripts/download-windows.ps1 -OutDir dist/windows -ManifestPath probe-manifest.json
 
+      - name: Read Windows x64 backend metadata
+        shell: pwsh
+        run: |
+          $msix = Get-ChildItem -LiteralPath dist/windows -Filter '*_x64__*.Msix' | Select-Object -First 1
+          if ($null -eq $msix) {
+            throw 'Missing Windows x64 MSIX.'
+          }
+          $msixPath = $msix.FullName
+          $metadataPath = 'dist/windows/windows-backend-x64.json'
+          try {
+            $metadata = python scripts/read-codex-backend-version.py --json --platform windows --architecture x64 "$msixPath"
+            if ($LASTEXITCODE -ne 0) {
+              throw "Backend reader exited with code $LASTEXITCODE."
+            }
+            $metadataText = $metadata -join [Environment]::NewLine
+            $null = ConvertFrom-Json -InputObject $metadataText -ErrorAction Stop
+            $metadataText | Set-Content -Encoding utf8 -Path $metadataPath
+          }
+          catch {
+            Write-Warning "Could not read Windows x64 backend metadata: $($_.Exception.Message)"
+            '{"architecture":"x64","platform":"windows","status":"unavailable"}' |
+              Set-Content -Encoding utf8 -Path $metadataPath
+          }
+
+      - name: Prepare Windows ARM64 backend input
+        shell: pwsh
+        run: |
+          $inputDir = 'dist/windows-arm64-backend-input'
+          $inputManifestPath = Join-Path $inputDir 'backend-input.json'
+          New-Item -ItemType Directory -Force -Path $inputDir | Out-Null
+          $writeUnavailable = {
+            Remove-Item -LiteralPath (Join-Path $inputDir 'codex.exe') -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath (Join-Path $inputDir 'codex') -Force -ErrorAction SilentlyContinue
+            '{"architecture":"arm64","platform":"windows","schemaVersion":1,"status":"unavailable"}' |
+              Set-Content -Encoding utf8 -Path $inputManifestPath
+          }
+
+          $msix = Get-ChildItem -LiteralPath dist/windows -Filter '*_arm64__*.Msix' | Select-Object -First 1
+          if ($null -eq $msix) {
+            & $writeUnavailable
+            return
+          }
+
+          try {
+            $sourceSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $msix.FullName).Hash.ToLowerInvariant()
+            $prepareOutput = python scripts/read-codex-backend-version.py `
+              --prepare-input-dir $inputDir `
+              --source-package $msix.FullName `
+              --source-package-sha256 $sourceSha256 `
+              --platform windows `
+              --architecture arm64 `
+              $msix.FullName
+            if ($LASTEXITCODE -ne 0) {
+              throw "Backend input preparation exited with code $LASTEXITCODE."
+            }
+            $inputManifest = Get-Content -Raw -LiteralPath $inputManifestPath | ConvertFrom-Json -ErrorAction Stop
+            if ($inputManifest.status -notin @('ready', 'unavailable')) {
+              throw 'Backend input manifest has an invalid status.'
+            }
+            $prepareOutput | Write-Host
+          }
+          catch {
+            Write-Warning "Could not prepare Windows ARM64 backend input: $($_.Exception.Message)"
+            & $writeUnavailable
+          }
+
+      - name: Upload Windows ARM64 backend input
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: codex-windows-arm64-backend-input
+          path: dist/windows-arm64-backend-input/*
+          if-no-files-found: error
+
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v7
         with:
@@ -117,16 +191,66 @@ jobs:
           path: dist/windows/*
           if-no-files-found: error
 
+  windows_arm64_backend:
+    name: Read Windows ARM64 backend metadata
+    runs-on: windows-11-arm
+    continue-on-error: true
+    timeout-minutes: 30
+    needs:
+      - probe
+      - windows
+    if: needs.probe.outputs.should_release == 'true'
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: codex-windows-arm64-backend-input
+          path: dist/windows-arm64-backend-input
+
+      - name: Read Windows ARM64 backend metadata
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist/windows-arm64-backend | Out-Null
+          $inputManifestPath = 'dist/windows-arm64-backend-input/backend-input.json'
+          $metadataPath = 'dist/windows-arm64-backend/windows-backend-arm64.json'
+          try {
+            $metadata = python scripts/read-codex-backend-version.py `
+              --prepared-input `
+              --json `
+              --platform windows `
+              --architecture arm64 `
+              $inputManifestPath
+            if ($LASTEXITCODE -ne 0) {
+              throw "Backend reader exited with code $LASTEXITCODE."
+            }
+            $metadataText = $metadata -join [Environment]::NewLine
+            $null = ConvertFrom-Json -InputObject $metadataText -ErrorAction Stop
+            $metadataText | Set-Content -Encoding utf8 -Path $metadataPath
+          }
+          catch {
+            Write-Warning "Could not read Windows ARM64 backend metadata: $($_.Exception.Message)"
+            '{"architecture":"arm64","platform":"windows","status":"unavailable"}' |
+              Set-Content -Encoding utf8 -Path $metadataPath
+          }
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: codex-windows-arm64-backend
+          path: dist/windows-arm64-backend/*
+          if-no-files-found: error
+
   release:
     name: Publish release
     runs-on: ubuntu-latest
-    if: needs.probe.outputs.should_release == 'true'
+    if: always() && needs.probe.outputs.should_release == 'true' && needs.macos.result == 'success' && needs.windows.result == 'success'
     permissions:
       contents: write
     needs:
       - probe
       - macos
       - windows
+      - windows_arm64_backend
     steps:
       - uses: actions/checkout@v6
 

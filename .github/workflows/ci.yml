@@ -54,6 +54,10 @@ jobs:
         shell: bash
         run: actionlint
 
+      - name: Test backend version reader fixture
+        shell: bash
+        run: scripts/test-read-codex-backend-version.sh
+
       - name: Test release metadata fixture
         shell: bash
         run: scripts/test-prepare-release-metadata.sh
