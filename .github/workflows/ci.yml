@@ -17,6 +17,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Checkout agents-mirror-kit
+        uses: actions/checkout@v6
+        with:
+          repository: Wangnov/agents-mirror-kit
+          ref: v0.1.0
+          path: .mirror-kit
+
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
@@ -74,10 +81,6 @@ jobs:
       - name: Test secondary S3 retry fixture
         shell: bash
         run: scripts/test-sync-secondary-s3.sh
-
-      - name: Test download stats fixture
-        shell: bash
-        run: python3 scripts/test-update-download-stats.py
 
       - uses: actions/setup-node@v6
         with:

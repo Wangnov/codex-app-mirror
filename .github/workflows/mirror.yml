@@ -118,6 +118,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Checkout agents-mirror-kit
+        uses: actions/checkout@v6
+        with:
+          repository: Wangnov/agents-mirror-kit
+          ref: v0.1.0
+          path: .mirror-kit
+
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
@@ -368,7 +375,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           LATEST_TAG: ${{ needs.probe.outputs.latest_tag }}
         shell: bash
-        run: bash scripts/remove-latest-links-from-release-notes.sh "$LATEST_TAG"
+        run: bash .mirror-kit/scripts/remove-latest-links-from-release-notes.sh "$LATEST_TAG"
 
       - name: Ensure AWS CLI
         if: steps.meta.outputs.sync_latest == 'true'
@@ -494,21 +501,21 @@ jobs:
 
           staging_prefix="staging/${RELEASE_TAG}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           cleanup_staging() {
-            bash scripts/clear-r2-prefix.sh "$R2_BUCKET_NAME" "$staging_prefix" || true
+            bash .mirror-kit/scripts/clear-r2-prefix.sh "$R2_BUCKET_NAME" "$staging_prefix" || true
           }
           trap cleanup_staging EXIT
 
           upload_aliases() {
             local prefix="$1"
-            bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/mac-arm64" "$mac_arm64" Codex-mac-arm64.dmg
-            bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/mac-intel" "$mac_intel" Codex-mac-intel.dmg
-            bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/win" "$win_x64_msix" Codex-Windows-x64.msix
-            bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/win-x64" "$win_x64_msix" Codex-Windows-x64.msix
+            bash .mirror-kit/scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/mac-arm64" "$mac_arm64" Codex-mac-arm64.dmg
+            bash .mirror-kit/scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/mac-intel" "$mac_intel" Codex-mac-intel.dmg
+            bash .mirror-kit/scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/win" "$win_x64_msix" Codex-Windows-x64.msix
+            bash .mirror-kit/scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/win-x64" "$win_x64_msix" Codex-Windows-x64.msix
             if [[ "$win_arm64_alias_source" == "true" && -n "$win_arm64_msix" && -f "$win_arm64_msix" ]]; then
-              bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/win-arm64" "$win_arm64_msix" Codex-Windows-arm64.msix
+              bash .mirror-kit/scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/win-arm64" "$win_arm64_msix" Codex-Windows-arm64.msix
             fi
-            bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/checksums" latest-SHA256SUMS.txt SHA256SUMS.txt
-            bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/manifest" release-manifest.json release-manifest.json
+            bash .mirror-kit/scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/checksums" latest-SHA256SUMS.txt SHA256SUMS.txt
+            bash .mirror-kit/scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$prefix/manifest" release-manifest.json release-manifest.json
           }
 
           # appcast feeds are small and change every release, so keep their CDN
@@ -517,7 +524,7 @@ jobs:
             local key="$1"
             local file="$2"
             R2_CACHE_CONTROL="public, max-age=600" \
-              bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$key" "$file" "$(basename "$file")"
+              bash .mirror-kit/scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$key" "$file" "$(basename "$file")"
           }
 
           upload_aliases "$staging_prefix"
@@ -527,33 +534,33 @@ jobs:
             --no-progress
           cmp release-manifest.json /tmp/r2-staging-manifest.json
 
-          bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/mac-arm64 "$mac_arm64" Codex-mac-arm64.dmg
-          bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/mac-intel "$mac_intel" Codex-mac-intel.dmg
-          bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/win "$win_x64_msix" Codex-Windows-x64.msix
-          bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/win-x64 "$win_x64_msix" Codex-Windows-x64.msix
+          bash .mirror-kit/scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/mac-arm64 "$mac_arm64" Codex-mac-arm64.dmg
+          bash .mirror-kit/scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/mac-intel "$mac_intel" Codex-mac-intel.dmg
+          bash .mirror-kit/scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/win "$win_x64_msix" Codex-Windows-x64.msix
+          bash .mirror-kit/scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/win-x64 "$win_x64_msix" Codex-Windows-x64.msix
           if [[ "$win_arm64_alias_source" == "true" && -n "$win_arm64_msix" && -f "$win_arm64_msix" ]]; then
-            bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/win-arm64 "$win_arm64_msix" Codex-Windows-arm64.msix
+            bash .mirror-kit/scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/win-arm64 "$win_arm64_msix" Codex-Windows-arm64.msix
           else
             echo "Removing stale R2 latest/win-arm64 because this manifest does not advertise a checksum-matching ARM64 package."
             aws s3 rm "s3://$R2_BUCKET_NAME/latest/win-arm64" \
               --endpoint-url "$R2_S3_ENDPOINT" \
               --region "${AWS_DEFAULT_REGION:-auto}"
           fi
-          bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/checksums latest-SHA256SUMS.txt SHA256SUMS.txt
-          bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/manifest release-manifest.json release-manifest.json
+          bash .mirror-kit/scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/checksums latest-SHA256SUMS.txt SHA256SUMS.txt
+          bash .mirror-kit/scripts/sync-r2.sh --object "$R2_BUCKET_NAME" latest/manifest release-manifest.json release-manifest.json
 
           # Sparkle archives first, then the appcasts that reference them, so the
           # feed never advertises an enclosure that is not yet downloadable. The
           # full .zip and every .delta go up before the appcasts are published.
-          bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$arm_zip_key" "$mac_arm64_zip" "$(basename "$mac_arm64_zip")"
-          bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$intel_zip_key" "$mac_intel_zip" "$(basename "$mac_intel_zip")"
+          bash .mirror-kit/scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$arm_zip_key" "$mac_arm64_zip" "$(basename "$mac_arm64_zip")"
+          bash .mirror-kit/scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "$intel_zip_key" "$mac_intel_zip" "$(basename "$mac_intel_zip")"
           while IFS= read -r bn; do
             [[ -z "$bn" ]] && continue
-            bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "latest/mac/arm64/$bn" "artifacts/codex-macos/$bn" "$bn"
+            bash .mirror-kit/scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "latest/mac/arm64/$bn" "artifacts/codex-macos/$bn" "$bn"
           done < /tmp/arm-delta-basenames.txt
           while IFS= read -r bn; do
             [[ -z "$bn" ]] && continue
-            bash scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "latest/mac/intel/$bn" "artifacts/codex-macos/$bn" "$bn"
+            bash .mirror-kit/scripts/sync-r2.sh --object "$R2_BUCKET_NAME" "latest/mac/intel/$bn" "artifacts/codex-macos/$bn" "$bn"
           done < /tmp/x64-delta-basenames.txt
           upload_appcast latest/appcast.xml appcast.xml
           upload_appcast latest/appcast-x64.xml appcast-x64.xml
