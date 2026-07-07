@@ -1,9 +1,14 @@
 const DEFAULT_SECONDARY_COUNTRY_CODES = "CN";
 const DEFAULT_SIGNED_URL_TTL_SECONDS = 3600;
+const STATS_BADGE_PATH = "/stats/downloads.json";
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    if (url.pathname.startsWith("/stats/")) {
+      return serveStatsBadge(request, env, url.pathname);
+    }
 
     if (!isAllowedLatestPath(url.pathname)) {
       return new Response("Not found", { status: 404 });
@@ -62,6 +67,39 @@ export default {
     });
   },
 };
+
+// The zone apex serves the website, whose SPA fallback would otherwise answer
+// /stats/* with HTML; this worker route owns the prefix so the shields.io
+// badge endpoint keeps returning JSON. Served from R2 directly (no geo
+// routing): the payload is a few hundred bytes and read mostly by shields.io.
+async function serveStatsBadge(request, env, pathname) {
+  if (pathname !== STATS_BADGE_PATH) {
+    return new Response("Not found", { status: 404 });
+  }
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return new Response("Method not allowed", {
+      status: 405,
+      headers: { Allow: "GET, HEAD" },
+    });
+  }
+  if (!env.GLOBAL_MIRROR_BASE_URL) {
+    return new Response("Missing GLOBAL_MIRROR_BASE_URL", { status: 500 });
+  }
+
+  const target = withPathAndSearch(env.GLOBAL_MIRROR_BASE_URL, STATS_BADGE_PATH, "");
+  const upstream = await fetch(target.toString(), { method: request.method });
+  if (!upstream.ok) {
+    return new Response("Not found", { status: 404 });
+  }
+  return new Response(upstream.body, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "public, max-age=300",
+      "Access-Control-Allow-Origin": "*",
+    },
+  });
+}
 
 function isAllowedLatestPath(pathname) {
   const aliases = new Set([

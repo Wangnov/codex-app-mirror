@@ -75,6 +75,10 @@ jobs:
         shell: bash
         run: scripts/test-sync-secondary-s3.sh
 
+      - name: Test download stats fixture
+        shell: bash
+        run: python3 scripts/test-update-download-stats.py
+
       - uses: actions/setup-node@v6
         with:
           node-version: 24

@@ -127,6 +127,69 @@ test("analytics failures do not block redirects", async () => {
   assert.equal(response.headers.get("Location"), "https://r2.example.com/latest/win");
 });
 
+test("serves the stats badge JSON from the global mirror", async () => {
+  const analytics = createAnalytics();
+  const badge = '{"schemaVersion":1,"label":"downloads","message":"281.6k","color":"brightgreen"}';
+  const response = await withFakeFetch(
+    async (input) => {
+      assert.equal(String(input), "https://r2.example.com/stats/downloads.json");
+      return new Response(badge, {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+    () =>
+      worker.fetch(new Request("https://codexapp.agentsmirror.com/stats/downloads.json"), {
+        GLOBAL_MIRROR_BASE_URL: "https://r2.example.com",
+        DOWNLOAD_ANALYTICS: analytics,
+      }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("Content-Type"), "application/json; charset=utf-8");
+  assert.equal(await response.text(), badge);
+  assert.deepEqual(analytics.points, []);
+});
+
+test("maps upstream badge failures to 404", async () => {
+  const response = await withFakeFetch(
+    async () => new Response("nope", { status: 404 }),
+    () =>
+      worker.fetch(new Request("https://codexapp.agentsmirror.com/stats/downloads.json"), {
+        GLOBAL_MIRROR_BASE_URL: "https://r2.example.com",
+      }),
+  );
+
+  assert.equal(response.status, 404);
+});
+
+test("rejects other stats paths and non-GET badge methods", async () => {
+  const env = { GLOBAL_MIRROR_BASE_URL: "https://r2.example.com" };
+
+  const otherPath = await worker.fetch(
+    new Request("https://codexapp.agentsmirror.com/stats/state.json"),
+    env,
+  );
+  assert.equal(otherPath.status, 404);
+
+  const post = await worker.fetch(
+    new Request("https://codexapp.agentsmirror.com/stats/downloads.json", { method: "POST" }),
+    env,
+  );
+  assert.equal(post.status, 405);
+  assert.equal(post.headers.get("Allow"), "GET, HEAD");
+});
+
+async function withFakeFetch(fake, run) {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = fake;
+  try {
+    return await run();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
 function createAnalytics() {
   return {
     points: [],

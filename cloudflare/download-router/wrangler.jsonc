@@ -12,6 +12,10 @@
     {
       "pattern": "codexapp.agentsmirror.com/latest/*",
       "zone_id": "a5bae9b722f3c5fe1a24aaebe7a8e663"
+    },
+    {
+      "pattern": "codexapp.agentsmirror.com/stats/*",
+      "zone_id": "a5bae9b722f3c5fe1a24aaebe7a8e663"
     }
   ],
   "analytics_engine_datasets": [
