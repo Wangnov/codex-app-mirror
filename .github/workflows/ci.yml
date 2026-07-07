@@ -63,6 +63,10 @@ jobs:
         shell: bash
         run: scripts/test-probe-release-windows-rollout.sh
 
+      - name: Test release probe stale-FE3 fixture
+        shell: bash
+        run: scripts/test-probe-release-stale-fe3.sh
+
       - name: Test Windows download retry fixture
         shell: bash
         run: scripts/test-download-windows-retry.sh
