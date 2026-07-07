@@ -738,8 +738,79 @@ resolve_store_link() {
   return 1
 }
 
+require_positive_integer() {
+  local name="$1"
+  local value="$2"
+
+  if [[ ! "$value" =~ ^[1-9][0-9]*$ ]]; then
+    echo "$name must be a positive integer, got '$value'." >&2
+    exit 2
+  fi
+}
+
+require_non_negative_integer() {
+  local name="$1"
+  local value="$2"
+
+  if [[ ! "$value" =~ ^[0-9]+$ ]]; then
+    echo "$name must be a non-negative integer, got '$value'." >&2
+    exit 2
+  fi
+}
+
+resolve_store_package_line() {
+  local desired_arch="$1"
+  local max_attempts="$2"
+  local delay="$3"
+  local line
+
+  line="$(resolve_store_link "$desired_arch" "$max_attempts" "$delay" |
+    awk '/^OpenAI\.Codex_/ { print; exit }')"
+  if [[ -z "$line" ]]; then
+    echo "No Microsoft Store package link was resolved." >&2
+    exit 1
+  fi
+
+  printf '%s\n' "$line"
+}
+
 package_version() {
   sed -E 's/^OpenAI\.Codex_([^_]+)_.*/\1/' <<<"$1"
+}
+
+version_less_than() {
+  local left="$1"
+  local right="$2"
+  local -a left_parts
+  local -a right_parts
+  local max_parts
+  local i
+  local left_part
+  local right_part
+
+  if [[ ! "$left" =~ ^[0-9]+([.][0-9]+)*$ || ! "$right" =~ ^[0-9]+([.][0-9]+)*$ ]]; then
+    return 1
+  fi
+
+  IFS=. read -r -a left_parts <<<"$left"
+  IFS=. read -r -a right_parts <<<"$right"
+  max_parts="${#left_parts[@]}"
+  if ((${#right_parts[@]} > max_parts)); then
+    max_parts="${#right_parts[@]}"
+  fi
+
+  for ((i = 0; i < max_parts; i++)); do
+    left_part="${left_parts[$i]:-0}"
+    right_part="${right_parts[$i]:-0}"
+    if ((10#$left_part < 10#$right_part)); then
+      return 0
+    fi
+    if ((10#$left_part > 10#$right_part)); then
+      return 1
+    fi
+  done
+
+  return 1
 }
 
 catalog_package_for_arch() {
@@ -765,26 +836,73 @@ catalog_field() {
 windows_catalog_json="$(curl_get "Windows DisplayCatalog" "$windows_display_catalog_url")"
 windows_x64_catalog="$(catalog_package_for_arch x64)"
 windows_arm64_catalog="$(catalog_package_for_arch arm64)"
-
-link_line="$(resolve_store_link "$architecture" "${STORE_LINK_MAX_ATTEMPTS:-3}" "${STORE_LINK_RETRY_DELAY_SECONDS:-10}" |
-  awk '/^OpenAI\.Codex_/ { print; exit }')"
-
-if [[ -z "$link_line" ]]; then
-  echo "No Microsoft Store package link was resolved." >&2
-  exit 1
-fi
-
-windows_package="${link_line%%$'\t'*}"
-windows_url="${link_line#*$'\t'}"
-windows_version="$(package_version "$windows_package")"
 windows_update_json="$(curl_get "Windows update manifest" "$windows_update_manifest_url")"
 windows_update_version="$(jq -r '.buildVersion // empty' <<<"$windows_update_json")"
 windows_update_product_id="$(jq -r '.storeProductId // empty' <<<"$windows_update_json")"
 windows_update_package_identity="$(jq -r '.packageIdentity // empty' <<<"$windows_update_json")"
-windows_headers="$(curl_head "Windows MSIX" "$windows_url")"
-windows_content_length="$(header_value "$windows_headers" "content-length")"
-windows_last_modified="$(header_value "$windows_headers" "last-modified")"
-windows_etag="$(header_value "$windows_headers" "etag")"
+windows_x64_catalog_package="$(catalog_field "$windows_x64_catalog" PackageFullName)"
+windows_x64_catalog_version=""
+if [[ -n "$windows_x64_catalog_package" ]]; then
+  windows_x64_catalog_version="$(package_version "$windows_x64_catalog_package")"
+fi
+
+store_link_max_attempts="${STORE_LINK_MAX_ATTEMPTS:-3}"
+store_link_retry_delay_seconds="${STORE_LINK_RETRY_DELAY_SECONDS:-10}"
+store_link_stability_max_attempts="${STORE_LINK_STABILITY_MAX_ATTEMPTS:-12}"
+store_link_stability_retry_delay_seconds="${STORE_LINK_STABILITY_RETRY_DELAY_SECONDS:-30}"
+require_positive_integer STORE_LINK_MAX_ATTEMPTS "$store_link_max_attempts"
+require_non_negative_integer STORE_LINK_RETRY_DELAY_SECONDS "$store_link_retry_delay_seconds"
+require_positive_integer STORE_LINK_STABILITY_MAX_ATTEMPTS "$store_link_stability_max_attempts"
+require_non_negative_integer STORE_LINK_STABILITY_RETRY_DELAY_SECONDS "$store_link_stability_retry_delay_seconds"
+
+windows_x64_stale_fe3=false
+windows_x64_stale_fe3_notice=""
+for ((stability_attempt = 1; stability_attempt <= store_link_stability_max_attempts; stability_attempt++)); do
+  link_line="$(resolve_store_package_line "$architecture" "$store_link_max_attempts" "$store_link_retry_delay_seconds")"
+  windows_package="${link_line%%$'\t'*}"
+  windows_version="$(package_version "$windows_package")"
+  windows_x64_fe3_behind_catalog=false
+  if [[ "$windows_update_version" == "$windows_x64_catalog_version" ]] &&
+    version_less_than "$windows_version" "$windows_x64_catalog_version"; then
+    windows_x64_fe3_behind_catalog=true
+  fi
+
+  if [[ "$architecture" == "x64" &&
+        -n "$windows_x64_catalog_package" &&
+        -n "$windows_update_version" &&
+        "$windows_update_version" == "$windows_x64_catalog_version" &&
+        "$windows_x64_fe3_behind_catalog" == "true" &&
+        "$windows_package" != "$windows_x64_catalog_package" ]]; then
+    windows_x64_stale_fe3=true
+    windows_x64_stale_fe3_notice="Windows x64 DisplayCatalog/update manifest advertise $windows_x64_catalog_package, but FE3 returned $windows_package."
+    if ((stability_attempt < store_link_stability_max_attempts)); then
+      echo "$windows_x64_stale_fe3_notice Re-probing in ${store_link_stability_retry_delay_seconds}s (${stability_attempt}/${store_link_stability_max_attempts})." >&2
+      if ((store_link_stability_retry_delay_seconds > 0)); then
+        sleep "$store_link_stability_retry_delay_seconds"
+      fi
+      continue
+    fi
+  else
+    windows_x64_stale_fe3=false
+    windows_x64_stale_fe3_notice=""
+  fi
+
+  break
+done
+
+windows_package="${link_line%%$'\t'*}"
+windows_url="${link_line#*$'\t'}"
+windows_version="$(package_version "$windows_package")"
+if [[ "$windows_x64_stale_fe3" == "true" ]]; then
+  windows_content_length=0
+  windows_last_modified=""
+  windows_etag=""
+else
+  windows_headers="$(curl_head "Windows MSIX" "$windows_url")"
+  windows_content_length="$(header_value "$windows_headers" "content-length")"
+  windows_last_modified="$(header_value "$windows_headers" "last-modified")"
+  windows_etag="$(header_value "$windows_headers" "etag")"
+fi
 
 windows_arm64_package="$(catalog_field "$windows_arm64_catalog" PackageFullName)"
 windows_arm64_version=""
@@ -818,8 +936,9 @@ else
   echo "Windows arm64 Store package link is not downloadable yet; recording catalog metadata only." >&2
 fi
 
-windows_x64_catalog_package="$(catalog_field "$windows_x64_catalog" PackageFullName)"
-if [[ -n "$windows_x64_catalog_package" && "$windows_x64_catalog_package" != "$windows_package" ]]; then
+if [[ "$windows_x64_stale_fe3" == "true" ]]; then
+  echo "Windows x64 FE3 snapshot is stale; waiting instead of using $windows_package." >&2
+elif [[ -n "$windows_x64_catalog_package" && "$windows_x64_catalog_package" != "$windows_package" ]]; then
   echo "Windows x64 DisplayCatalog package ($windows_x64_catalog_package) differs from FE3 downloadable package ($windows_package); using downloadable package." >&2
 fi
 
@@ -974,7 +1093,10 @@ release_tag_fallback=""
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
-if [[ "$force_release" == "true" ]]; then
+if [[ "$windows_x64_stale_fe3" == "true" ]]; then
+  should_release="false"
+  skip_reason="$windows_x64_stale_fe3_notice Waiting for a consistent downloadable MSIX."
+elif [[ "$force_release" == "true" ]]; then
   skip_reason="force_release=true"
 else
   latest_tag="$(latest_release_tag)"
