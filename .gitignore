@@ -7,3 +7,7 @@ obj/
 # local tooling caches
 .wrangler/
 __pycache__/
+node_modules/
+
+# local checkout of Wangnov/agents-mirror-kit (CI checks it out per-run)
+.mirror-kit/

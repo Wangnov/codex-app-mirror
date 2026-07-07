@@ -17,6 +17,11 @@ if ! command -v aws >/dev/null 2>&1; then
 fi
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+mirror_kit_dir="${MIRROR_KIT_DIR:-$repo_root/.mirror-kit}"
+if [[ ! -f "$mirror_kit_dir/scripts/sync-r2.sh" ]]; then
+  echo "agents-mirror-kit not found at $mirror_kit_dir; checkout Wangnov/agents-mirror-kit there or set MIRROR_KIT_DIR." >&2
+  exit 2
+fi
 prefix="${SECONDARY_S3_PREFIX:-latest}"
 prefix="${prefix#/}"
 prefix="${prefix%/}"
@@ -203,7 +208,7 @@ secondary_upload_object() {
 
   for ((attempt = 1; attempt <= upload_attempts; attempt++)); do
     echo "Secondary S3 upload attempt $attempt/$upload_attempts: $object_path"
-    if bash "$repo_root/scripts/sync-r2.sh" --object "$SECONDARY_S3_BUCKET" "$object_path" "$file" "$download_name" &&
+    if bash "$mirror_kit_dir/scripts/sync-r2.sh" --object "$SECONDARY_S3_BUCKET" "$object_path" "$file" "$download_name" &&
       secondary_verify_object_size "$object_path" "$expected_size"; then
       return 0
     else

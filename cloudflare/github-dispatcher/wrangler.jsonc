@@ -1,5 +1,4 @@
 {
-  "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "codex-app-mirror-dispatcher",
   "main": "src/index.js",
   "compatibility_date": "2026-05-23",
@@ -11,13 +10,12 @@
     "enabled": true,
     "head_sampling_rate": 1
   },
-  // The scheduled Worker dispatches mirror.yml for codex-app-mirror and agents-cli-mirror.
+  // Worker source lives in Wangnov/agents-mirror-kit (workers/github-dispatcher);
+  // this file is the per-instance deployment config. Deploy by copying it next
+  // to the kit worker's src/ and running `npx wrangler deploy` there.
+  // The instance dispatches mirror.yml for codex-app-mirror and agents-cli-mirror.
   "vars": {
-    "GITHUB_OWNER": "Wangnov",
-    "GITHUB_REPO": "codex-app-mirror",
-    "GITHUB_WORKFLOW": "mirror.yml",
-    "GITHUB_REF": "main",
-    "GITHUB_FORCE_RELEASE": "false"
+    "DISPATCH_TARGETS": "[{\"owner\":\"Wangnov\",\"repo\":\"codex-app-mirror\",\"inputs\":{\"force_release\":\"false\"}},{\"owner\":\"Wangnov\",\"repo\":\"agents-cli-mirror\"}]"
   },
   "secrets": {
     "required": ["GITHUB_TOKEN"]

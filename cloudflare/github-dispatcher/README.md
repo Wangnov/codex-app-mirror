@@ -1,72 +1,29 @@
 # codex-app-mirror Cloudflare dispatcher
 
-This Worker uses Cloudflare Cron Triggers as the primary 15-minute scheduler for
-`codex-app-mirror` and `agents-cli-mirror`. It does not mirror files itself. It
-only calls the GitHub Actions `workflow_dispatch` API for the configured mirror
-workflows.
+Cloudflare Cron Trigger 主调度实例：每 15 分钟 dispatch `codex-app-mirror` 与
+`agents-cli-mirror` 的 `mirror.yml`（GitHub Actions `schedule` 仍作为每 6 小时的
+低频兜底）。
 
-GitHub Actions `schedule` remains in the repository as a low-frequency fallback.
-
-## Why this exists
-
-GitHub scheduled workflows can be delayed or skipped during busy periods. A
-Cloudflare Cron Trigger gives us a separate scheduler while keeping the existing
-GitHub Actions release pipeline unchanged.
-
-## GitHub token
-
-Create a fine-grained personal access token:
-
-- Repository access: `Wangnov/codex-app-mirror` and `Wangnov/agents-cli-mirror`
-- Repository permissions: `Actions` -> `Read and write`
-- Expiration: 90 or 180 days recommended
-
-Store it as a Cloudflare Worker secret:
-
-```bash
-npx wrangler secret put GITHUB_TOKEN
-```
-
-Do not put the token in `wrangler.jsonc`, `.dev.vars`, or source code.
+**Worker 源码在 [Wangnov/agents-mirror-kit](https://github.com/Wangnov/agents-mirror-kit)
+的 `workers/github-dispatcher/`**；本目录只保留这个实例的部署配置
+`wrangler.jsonc`（实例名、cron、`DISPATCH_TARGETS`）。
 
 ## Deploy
 
 ```bash
-cd cloudflare/github-dispatcher
-npm install
-npx wrangler login
-npx wrangler secret put GITHUB_TOKEN
+git clone --depth 1 --branch v0.1.0 https://github.com/Wangnov/agents-mirror-kit
+cp cloudflare/github-dispatcher/wrangler.jsonc agents-mirror-kit/workers/github-dispatcher/
+cd agents-mirror-kit/workers/github-dispatcher
 npx wrangler deploy
+npx wrangler secret put GITHUB_TOKEN   # 首次部署或换 token 时
 ```
 
-Cron trigger changes may take several minutes to propagate.
+## GitHub token
 
-## Local scheduled test
-
-```bash
-cd cloudflare/github-dispatcher
-npm install
-npx wrangler dev --test-scheduled
-curl "http://localhost:8787/__scheduled?cron=7,22,37,52+*+*+*+*"
-```
-
-The local test will trigger the real GitHub workflow if `GITHUB_TOKEN` is set in
-local development secrets.
+Fine-grained PAT，Repository access 覆盖 `DISPATCH_TARGETS` 中的所有仓库，
+权限 `Actions -> Read and write`。只存 Worker secret，不进任何文件。
 
 ## Schedule
 
-Cloudflare primary schedule:
-
-```text
-7,22,37,52 * * * *
-```
-
-That is every 15 minutes in UTC.
-
-GitHub fallback schedule:
-
-```text
-11 */6 * * *
-```
-
-That is every 6 hours in UTC.
+- Cloudflare 主调度：`7,22,37,52 * * * *`（UTC，每 15 分钟）
+- GitHub 兜底：`11 */6 * * *`（UTC，每 6 小时）

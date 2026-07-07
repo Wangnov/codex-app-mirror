@@ -26,7 +26,12 @@ jobs:
     name: Update cumulative download badge
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout agents-mirror-kit
+        uses: actions/checkout@v6
+        with:
+          repository: Wangnov/agents-mirror-kit
+          ref: v0.1.0
+          path: .mirror-kit
 
       - name: Ensure AWS CLI
         shell: bash
@@ -45,4 +50,5 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
           R2_S3_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
-        run: python3 scripts/update-download-stats.py
+          STATS_OBJECTS: latest/win,latest/win-x64,latest/win-arm64,latest/mac-intel,latest/mac-arm64
+        run: python3 .mirror-kit/scripts/update-download-stats.py
