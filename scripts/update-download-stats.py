@@ -7,9 +7,15 @@ state file in R2 (stats/state.json) and, on each run, adds the download
 counts for the **fully elapsed** UTC days that have not been counted yet.
 It then writes a shields.io endpoint badge (stats/downloads.json).
 
-Counted metric: GetObject requests against the three installer aliases
-(latest/win, latest/mac-intel, latest/mac-arm64). Vulnerability-scanner
-noise (.env, wp-login.php, ...) and staging/* objects are excluded.
+Counted metric: GetObject requests against the installer aliases
+(latest/win, latest/win-x64, latest/win-arm64, latest/mac-intel,
+latest/mac-arm64). Vulnerability-scanner noise (.env, wp-login.php, ...)
+and staging/* objects are excluded.
+
+When an object is added to STATS_OBJECTS after launch, its already-elapsed
+days inside the retention window would be skipped by the incremental pass
+(which resumes at lastCountedDate + 1). Runs detect objects missing from
+the persisted state and backfill them once over the counted window.
 
 Token safety: the Cloudflare Analytics API token is read from the
 CF_ANALYTICS_API_TOKEN env var (a GitHub Secret in CI). It is only ever
@@ -26,7 +32,8 @@ Optional env:
   R2_S3_ENDPOINT           default: https://<CLOUDFLARE_ACCOUNT_ID>.r2.cloudflarestorage.com
   STATS_STATE_KEY          default: stats/state.json
   STATS_BADGE_KEY          default: stats/downloads.json
-  STATS_OBJECTS            default: latest/win,latest/mac-intel,latest/mac-arm64
+  STATS_OBJECTS            default: latest/win,latest/win-x64,latest/win-arm64,
+                                    latest/mac-intel,latest/mac-arm64
   STATS_BADGE_LABEL        default: downloads
   STATS_BADGE_COLOR        default: brightgreen
   STATS_DRY_RUN            if set to 1/true, compute and print but do NOT write R2
@@ -219,7 +226,8 @@ def main() -> int:
     badge_key = env("STATS_BADGE_KEY", "stats/downloads.json")
     objects = {s.strip() for s in env(
         "STATS_OBJECTS",
-        "latest/win,latest/mac-intel,latest/mac-arm64").split(",") if s.strip()}
+        "latest/win,latest/win-x64,latest/win-arm64,"
+        "latest/mac-intel,latest/mac-arm64").split(",") if s.strip()}
     label = env("STATS_BADGE_LABEL", "downloads")
     color = env("STATS_BADGE_COLOR", "brightgreen")
     dry_run = is_truthy(env("STATS_DRY_RUN", "0"))
@@ -236,6 +244,7 @@ def main() -> int:
     raw = s3_read(bucket, state_key, endpoint, allow_missing_aws=dry_run)
     state = json.loads(raw) if raw else None
 
+    backfill_per_day: dict[str, int] = {}
     if state is None:
         # Cold start: seed the cumulative total from the entire retention
         # window. While the bucket is younger than 32 days this captures the
@@ -259,6 +268,32 @@ def main() -> int:
                   f"permanently lost from the cumulative total.")
             start_date = window_start
 
+        # Objects newly added to STATS_OBJECTS have already-elapsed days in
+        # [window_start, lastCountedDate] that the incremental pass below
+        # (which resumes at lastCountedDate + 1) would never revisit. Query
+        # the still-retained part of that range once, for the new objects
+        # only; days past lastCountedDate are covered by the incremental
+        # pass, so the two ranges never overlap.
+        prev_objects = state.get("objects")
+        if prev_objects is None:
+            # Without the previously tracked set we cannot tell new objects
+            # from already-counted ones; backfilling would double count.
+            print("   WARNING: state has no objects list; skipping backfill")
+            added_objects: set[str] = set()
+        else:
+            added_objects = objects - set(prev_objects)
+        backfill_end = min(last_counted, yesterday)
+        if added_objects and backfill_end >= window_start:
+            print(f"   backfilling newly tracked objects: "
+                  f"{sorted(added_objects)}")
+            bf = graphql_per_day(
+                account, bucket, added_objects,
+                f"{window_start.isoformat()}T00:00:00Z", today_iso, token)
+            backfill_per_day = {
+                d.isoformat(): bf.get(d.isoformat(), 0)
+                for d in daterange(window_start, backfill_end)
+            }
+
     if start_date > yesterday:
         # Already counted through yesterday; nothing new (today is in-flight).
         print("   up to date: no fully-elapsed new day to add")
@@ -274,6 +309,7 @@ def main() -> int:
         }
 
     increment = sum(per_day_new.values())
+    backfill_total = sum(backfill_per_day.values())
 
     if state is None:
         base_total = 0
@@ -281,8 +317,12 @@ def main() -> int:
     else:
         base_total = int(state.get("total", 0))
         per_day_hist = dict(state.get("perDay", {}))
+    # Backfilled days already hold the previously tracked objects' counts,
+    # so add rather than overwrite.
+    for day, count in backfill_per_day.items():
+        per_day_hist[day] = per_day_hist.get(day, 0) + count
     per_day_hist.update(per_day_new)
-    total = base_total + increment
+    total = base_total + backfill_total + increment
 
     new_state = {
         "schema": 1,
@@ -306,6 +346,9 @@ def main() -> int:
     }
 
     # Report
+    if backfill_per_day:
+        print(f"   backfill: +{backfill_total} over {len(backfill_per_day)} "
+              f"day(s) for newly tracked object(s)")
     if per_day_new:
         print("   new days added:")
         for d, c in sorted(per_day_new.items()):
