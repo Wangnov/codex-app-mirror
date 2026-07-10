@@ -43,6 +43,9 @@ jq \
   elif $win[0].architectures.x64.packageVersion != $expectedVersion
     or $win[0].architectures.arm64.packageVersion != $expectedVersion then
     error("verified MSIX package version drift")
+  elif $win[0].architectures.x64.applicationArchivePath != "app/ChatGPT%20%28Beta%29.exe"
+    or $win[0].architectures.arm64.applicationArchivePath != "app/ChatGPT%20%28Beta%29.exe" then
+    error("verified MSIX archive entrypoint drift")
   else . end
   | .sources.windows.architectures.x64 += {
       fileName: $win[0].architectures.x64.fileName,
@@ -50,7 +53,8 @@ jq \
       packageIdentity: $win[0].architectures.x64.packageIdentity,
       packageFamilyName: $win[0].architectures.x64.packageFamilyName,
       applicationId: $win[0].architectures.x64.applicationId,
-      applicationExecutable: $win[0].architectures.x64.applicationExecutable
+      applicationExecutable: $win[0].architectures.x64.applicationExecutable,
+      applicationArchivePath: $win[0].architectures.x64.applicationArchivePath
     }
   | .sources.windows.architectures.arm64 += {
       fileName: $win[0].architectures.arm64.fileName,
@@ -58,7 +62,8 @@ jq \
       packageIdentity: $win[0].architectures.arm64.packageIdentity,
       packageFamilyName: $win[0].architectures.arm64.packageFamilyName,
       applicationId: $win[0].architectures.arm64.applicationId,
-      applicationExecutable: $win[0].architectures.arm64.applicationExecutable
+      applicationExecutable: $win[0].architectures.arm64.applicationExecutable,
+      applicationArchivePath: $win[0].architectures.arm64.applicationArchivePath
     }
   | .derived.prerelease = true
   | .derived.publishLatest = false
@@ -119,6 +124,8 @@ jq -e \
     and .sources.windows.architectures.arm64.packageIdentity == "OpenAI.CodexBeta"
     and .sources.windows.architectures.x64.applicationExecutable == "app/ChatGPT (Beta).exe"
     and .sources.windows.architectures.arm64.applicationExecutable == "app/ChatGPT (Beta).exe"
+    and .sources.windows.architectures.x64.applicationArchivePath == "app/ChatGPT%20%28Beta%29.exe"
+    and .sources.windows.architectures.arm64.applicationArchivePath == "app/ChatGPT%20%28Beta%29.exe"
     and .derived.prerelease == true
     and .derived.publishLatest == false
     and .derived.syncLatest == false
@@ -128,4 +135,4 @@ jq -e \
   ' "$manifest_path" >/dev/null
 
 echo "Finalized immutable Windows Beta candidate $release_tag at $candidate_base_url"
-jq '{version: .sources.windows.version, emergency, derived, candidate, architectures: (.sources.windows.architectures | map_values({fileName, contentLength, sha256, packageIdentity, applicationId, applicationExecutable}))}' "$manifest_path"
+jq '{version: .sources.windows.version, emergency, derived, candidate, architectures: (.sources.windows.architectures | map_values({fileName, contentLength, sha256, packageIdentity, applicationId, applicationExecutable, applicationArchivePath}))}' "$manifest_path"
