@@ -81,7 +81,10 @@ cat > "$tmp_dir/probe-manifest.json" <<'JSON'
         "etag": "arm64-etag",
         "appcast": {
           "shortVersionString": "1.2.3",
-          "version": "6"
+          "version": "6",
+          "enclosureUrl": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT-darwin-arm64-1.2.3.zip",
+          "sourceBasename": "ChatGPT-darwin-arm64-1.2.3.zip",
+          "mirrorEnclosureBasename": "Codex-darwin-arm64-1.2.3.zip"
         }
       },
       "x64": {
@@ -89,7 +92,10 @@ cat > "$tmp_dir/probe-manifest.json" <<'JSON'
         "etag": "x64-etag",
         "appcast": {
           "shortVersionString": "1.2.3",
-          "version": "6"
+          "version": "6",
+          "enclosureUrl": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT-darwin-x64-1.2.3.zip",
+          "sourceBasename": "ChatGPT-darwin-x64-1.2.3.zip",
+          "mirrorEnclosureBasename": "Codex-darwin-x64-1.2.3.zip"
         }
       }
     }
@@ -104,6 +110,14 @@ cat > "$tmp_dir/macos-metadata.json" <<'JSON'
       "bundleShortVersion": "1.2.3",
       "bundleVersion": "5",
       "bundleIdentifier": "com.openai.codex",
+      "bundleName": "ChatGPT",
+      "bundleExecutable": "ChatGPT",
+      "teamIdentifier": "2DC432GLL2",
+      "sparklePublicEdKey": "mNfr1v9t63BfgDtlw4C8lRvSY6uMggIXABDOCi3tS6k=",
+      "sparkleArchiveFileName": "Codex-darwin-arm64-1.2.3.zip",
+      "sparkleArchiveBundleShortVersion": "1.2.3",
+      "sparkleArchiveBundleVersion": "6",
+      "sparkleArchiveIdentityVerified": true,
       "minimumSystemVersion": "12.0",
       "sha256": "arm64-sha256"
     },
@@ -111,6 +125,14 @@ cat > "$tmp_dir/macos-metadata.json" <<'JSON'
       "bundleShortVersion": "1.2.3",
       "bundleVersion": "5",
       "bundleIdentifier": "com.openai.codex",
+      "bundleName": "ChatGPT",
+      "bundleExecutable": "ChatGPT",
+      "teamIdentifier": "2DC432GLL2",
+      "sparklePublicEdKey": "mNfr1v9t63BfgDtlw4C8lRvSY6uMggIXABDOCi3tS6k=",
+      "sparkleArchiveFileName": "Codex-darwin-x64-1.2.3.zip",
+      "sparkleArchiveBundleShortVersion": "1.2.3",
+      "sparkleArchiveBundleVersion": "6",
+      "sparkleArchiveIdentityVerified": true,
       "minimumSystemVersion": "12.0",
       "sha256": "x64-sha256"
     }
@@ -152,7 +174,11 @@ JSON
   grep -F 'Windows x64: https://example.com/latest/win-x64' release-notes.md
   grep -F '| macOS Apple Silicon | `1.2.3` | build `5` |' release-notes.md
   grep -F 'These latest links roll forward per architecture:' release-notes.md
-  test "$(jq -r '.schemaVersion' release-manifest.json)" = "4"
+  test "$(jq -r '.schemaVersion' release-manifest.json)" = "5"
+  test "$(jq -r '.sources.macos.arm64.appcast.sourceBasename' release-manifest.json)" = "ChatGPT-darwin-arm64-1.2.3.zip"
+  test "$(jq -r '.sources.macos.arm64.appcast.mirrorEnclosureBasename' release-manifest.json)" = "Codex-darwin-arm64-1.2.3.zip"
+  test "$(jq -r '.sources.macos.arm64.bundleExecutable' release-manifest.json)" = "ChatGPT"
+  test "$(jq -r '.sources.macos.arm64.teamIdentifier' release-manifest.json)" = "2DC432GLL2"
   test "$(jq -r '.derived.missingArchitectures | length' release-manifest.json)" = "0"
   test "$(jq -r '.sources.windows.architectures.arm64.currentForCodexVersion' release-manifest.json)" = "true"
   test "$(jq -r '.sources.windows.architectures.arm64.currentLocalArtifact' release-manifest.json)" = "true"
@@ -408,10 +434,17 @@ SUMS
     test "$(jq -r '.sources.windows.architectures.x64.currentForCodexVersion' release-manifest.json)" = "false"
   )
 
-  jq '.sources.macos.arm64.appcast.shortVersionString = "1.2.4"' \
+  jq '
+    .sources.macos.arm64.appcast.shortVersionString = "1.2.4"
+    | .sources.macos.arm64.appcast.enclosureUrl = "https://persistent.oaistatic.com/codex-app-prod/ChatGPT-darwin-arm64-1.2.4.zip"
+    | .sources.macos.arm64.appcast.sourceBasename = "ChatGPT-darwin-arm64-1.2.4.zip"
+    | .sources.macos.arm64.appcast.mirrorEnclosureBasename = "Codex-darwin-arm64-1.2.4.zip"
+  ' \
     probe-manifest.json > probe-manifest-mac-arm-ahead.json
   jq '
     .macos.arm64.bundleShortVersion = "1.2.4"
+    | .macos.arm64.sparkleArchiveFileName = "Codex-darwin-arm64-1.2.4.zip"
+    | .macos.arm64.sparkleArchiveBundleShortVersion = "1.2.4"
     | .commonShortVersion = ""
     | .versionsMatch = false
   ' macos-metadata.json > macos-metadata-arm-ahead.json

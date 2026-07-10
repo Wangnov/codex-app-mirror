@@ -31,7 +31,41 @@ test("buildObjectPlan derives release tag and shares the Windows x64 upload", ()
     "latest/win",
   ]);
   assert.ok(plan.items.some((item) => item.id === "win-arm64"));
+  assert.equal(
+    plan.items.find((item) => item.id === "mac-arm64-zip").sourceKey,
+    "latest/mac/arm64/Codex-darwin-arm64-2.0.0.zip",
+  );
   assert.ok(plan.keepLatestMacKeys.includes("latest/mac/arm64/Codex9999-live-arm64.delta"));
+});
+
+test("buildObjectPlan keeps a schema-4 fallback for the current public manifest", () => {
+  const manifest = fixtureManifest();
+  manifest.schemaVersion = 4;
+  delete manifest.sources.macos.arm64.appcast.mirrorEnclosureBasename;
+  delete manifest.sources.macos.x64.appcast.mirrorEnclosureBasename;
+
+  const plan = buildObjectPlan(manifest, deriveReleaseTag(manifest));
+
+  assert.equal(
+    plan.items.find((item) => item.id === "mac-arm64-zip").sourceKey,
+    "latest/mac/arm64/Codex-darwin-arm64-2.0.0.zip",
+  );
+  assert.equal(
+    plan.items.find((item) => item.id === "mac-x64-zip").sourceKey,
+    "latest/mac/intel/Codex-darwin-x64-2.0.0.zip",
+  );
+});
+
+test("buildObjectPlan rejects missing or unsafe schema-5 archive basenames", () => {
+  const missing = fixtureManifest();
+  delete missing.sources.macos.arm64.appcast.mirrorEnclosureBasename;
+  assert.throws(() => buildObjectPlan(missing, deriveReleaseTag(missing)), /missing.*mirrorEnclosureBasename/i);
+
+  for (const basename of ["../escape.zip", "nested/file.zip", "wrong.delta", "bad\u0001.zip"]) {
+    const unsafe = fixtureManifest();
+    unsafe.sources.macos.arm64.appcast.mirrorEnclosureBasename = basename;
+    assert.throws(() => buildObjectPlan(unsafe, deriveReleaseTag(unsafe)), /Invalid .* basename/);
+  }
 });
 
 test("buildObjectPlan omits unavailable Windows ARM64 and marks stale alias", () => {
@@ -161,7 +195,7 @@ test("falls back to ListObjectsV2 when HEAD reports zero bytes for a non-empty o
 
 function fixtureManifest() {
   return {
-    schemaVersion: 3,
+    schemaVersion: 5,
     codexVersion: "2.0.0",
     sources: {
       windows: {
@@ -177,6 +211,7 @@ function fixtureManifest() {
           appcast: {
             shortVersionString: "2.0.0",
             version: "100",
+            mirrorEnclosureBasename: "Codex-darwin-arm64-2.0.0.zip",
             deltas: [{ basename: "Codex9999-live-arm64.delta" }],
           },
         },
@@ -184,6 +219,7 @@ function fixtureManifest() {
           appcast: {
             shortVersionString: "2.0.0",
             version: "100",
+            mirrorEnclosureBasename: "Codex-darwin-x64-2.0.0.zip",
             deltas: [{ basename: "Codex9999-live-x64.delta" }],
           },
         },

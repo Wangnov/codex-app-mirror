@@ -33,7 +33,11 @@ case "${1:-}" in
     printf 'fake dotnet info\n'
     ;;
   run)
-    if [[ " $* " == *" arm64 "* ]]; then
+    if [[ "${!#}" != "OpenAI.Codex" ]]; then
+      echo "store-link did not receive the exact Stable package identity: $*" >&2
+      exit 1
+    fi
+    if [[ "$*" == *" arm64 OpenAI.Codex" ]]; then
       printf '%s\thttp://127.0.0.1:%s/%s.Msix\n' \
         "${TEST_CHANGED_ARM64_PACKAGE:?TEST_CHANGED_ARM64_PACKAGE must be set}" \
         "${TEST_HTTP_PORT:?TEST_HTTP_PORT must be set}" \

@@ -94,9 +94,19 @@ jobs:
         shell: bash
         run: node cloudflare/download-router/validate-config.mjs
 
+      - name: Validate secondary-sync worker
+        shell: bash
+        run: |
+          npm ci --prefix cloudflare/secondary-sync
+          npm run check --prefix cloudflare/secondary-sync
+
       - name: Test appcast generation fixture
         shell: bash
         run: scripts/test-build-appcast.sh
+
+      - name: Test macOS double-basename downloads
+        shell: bash
+        run: scripts/test-download-macos.sh
 
       - name: Test macOS Sparkle prune fixture
         shell: bash
@@ -108,3 +118,13 @@ jobs:
 
       - name: Build Microsoft Store resolver
         run: dotnet build scripts/store-link/StoreLink.csproj --configuration Release
+
+  macos-identity:
+    name: Validate macOS package identity gates
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Test DMG and Sparkle archive identity fixtures
+        shell: bash
+        run: scripts/test-read-macos-metadata.sh

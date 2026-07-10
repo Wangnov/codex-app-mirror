@@ -35,7 +35,9 @@ cat > "$tmp_dir/release-manifest.json" <<JSON
           "shortVersionString": "26.602.40724",
           "minimumSystemVersion": "12.0",
           "hardwareRequirements": "arm64",
-          "enclosureUrl": "https://persistent.oaistatic.com/codex-app-prod/Codex-darwin-arm64-26.602.40724.zip",
+          "enclosureUrl": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT-darwin-arm64-26.602.40724.zip",
+          "sourceBasename": "ChatGPT-darwin-arm64-26.602.40724.zip",
+          "mirrorEnclosureBasename": "Codex-darwin-arm64-26.602.40724.zip",
           "enclosureLength": 406585586,
           "enclosureSignature": "$arm_sig",
           "deltas": [
@@ -88,7 +90,9 @@ cat > "$tmp_dir/release-manifest.json" <<JSON
           "shortVersionString": "26.602.40724",
           "minimumSystemVersion": "12.0",
           "hardwareRequirements": "",
-          "enclosureUrl": "https://persistent.oaistatic.com/codex-app-prod/Codex-darwin-x64-26.602.40724.zip",
+          "enclosureUrl": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT-darwin-x64-26.602.40724.zip",
+          "sourceBasename": "ChatGPT-darwin-x64-26.602.40724.zip",
+          "mirrorEnclosureBasename": "Codex-darwin-x64-26.602.40724.zip",
           "enclosureLength": 397428010,
           "enclosureSignature": "$x64_sig",
           "deltas": []
@@ -227,6 +231,14 @@ cat > "$tmp_dir/empty-manifest.json" <<'JSON'
 JSON
 if bash "$repo_root/scripts/build-appcast.sh" arm64 "$tmp_dir/empty-manifest.json" "$base" "$tmp_dir/should-not-exist.xml" >/dev/null 2>&1; then
   echo "build-appcast.sh should fail when appcast metadata is missing." >&2
+  exit 1
+fi
+
+# Unsafe mirror basenames must never become object keys or enclosure URLs.
+jq '.sources.macos.arm64.appcast.mirrorEnclosureBasename = "../escape.zip"' \
+  "$tmp_dir/release-manifest.json" > "$tmp_dir/unsafe-manifest.json"
+if bash "$repo_root/scripts/build-appcast.sh" arm64 "$tmp_dir/unsafe-manifest.json" "$base" "$tmp_dir/unsafe.xml" >/dev/null 2>&1; then
+  echo "build-appcast.sh should reject an unsafe mirror enclosure basename." >&2
   exit 1
 fi
 

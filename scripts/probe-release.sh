@@ -2,6 +2,7 @@
 set -euo pipefail
 
 product_id="9PLM9XGG6VKS"
+package_identity="OpenAI.Codex"
 architecture="x64"
 windows_display_catalog_url="https://displaycatalog.mp.microsoft.com/v7.0/products/${product_id}?market=US&languages=en-US,en,neutral"
 arm_appcast_url="https://persistent.oaistatic.com/codex-app-prod/appcast.xml"
@@ -139,6 +140,73 @@ source_object_size() {
   printf '%s' "$size"
 }
 
+validate_safe_basename() {
+  local label="$1"
+  local value="$2"
+  local extension="$3"
+
+  if [[ -z "$value" || "$value" == "null" ||
+        "$value" == *"/"* || "$value" == *\\* || "$value" == *".."* ||
+        "$value" != *".$extension" ]] ||
+     LC_ALL=C printf '%s' "$value" | grep -q '[[:cntrl:]]'; then
+    echo "Invalid $label basename: '$value'." >&2
+    return 1
+  fi
+}
+
+derive_macos_dmg_url() {
+  local enclosure_url="$1"
+  local arch="$2"
+  local version="$3"
+
+  python3 - "$enclosure_url" "$arch" "$version" <<'PY'
+import sys
+from urllib.parse import urlsplit, urlunsplit
+
+url, arch, version = sys.argv[1:]
+parts = urlsplit(url)
+if parts.scheme != "https" or not parts.netloc:
+    raise SystemExit(f"invalid Sparkle enclosure URL: {url!r}")
+basename = parts.path.rsplit("/", 1)[-1]
+suffix = f"-darwin-{arch}-{version}.zip"
+if not basename.endswith(suffix):
+    raise SystemExit(
+        f"Sparkle enclosure basename {basename!r} does not end with {suffix!r}"
+    )
+prefix = basename[: -len(suffix)]
+if not prefix:
+    raise SystemExit(f"Sparkle enclosure basename has no product prefix: {basename!r}")
+dmg_basename = f"{prefix}-{version}-{arch}.dmg"
+directory = parts.path.rsplit("/", 1)[0]
+print(urlunsplit((parts.scheme, parts.netloc, f"{directory}/{dmg_basename}", "", "")))
+PY
+}
+
+manifest_mirror_enclosure_basename() {
+  local manifest="$1"
+  local arch_key="$2"
+  local archive_arch="$3"
+  local value
+  local short_version
+  local schema_version
+
+  value="$(jq -r --arg a "$arch_key" '.sources.macos[$a].appcast.mirrorEnclosureBasename // empty' "$manifest")"
+  if [[ -z "$value" || "$value" == "null" ]]; then
+    schema_version="$(jq -r '.schemaVersion // 0' "$manifest")"
+    if [[ "$schema_version" =~ ^[0-9]+$ && "$schema_version" -ge 5 ]]; then
+      echo "Schema-$schema_version manifest is missing macOS $arch_key mirrorEnclosureBasename." >&2
+      return 1
+    fi
+    # Compatibility with the current public schema-4 manifest. New probe and
+    # release manifests always carry the explicit mirror ABI basename.
+    short_version="$(jq -r --arg a "$arch_key" '.sources.macos[$a].appcast.shortVersionString // empty' "$manifest")"
+    [[ -n "$short_version" && "$short_version" != "null" ]] || return 1
+    value="Codex-darwin-${archive_arch}-${short_version}.zip"
+  fi
+  validate_safe_basename "macOS $arch_key mirror enclosure" "$value" zip || return 1
+  printf '%s' "$value"
+}
+
 appcast_latest() {
   local label="$1"
   local url="$2"
@@ -147,6 +215,7 @@ appcast_latest() {
 import json
 import sys
 import xml.etree.ElementTree as ET
+from urllib.parse import urlsplit
 
 SPARKLE = "http://www.andymatuschak.org/xml-namespaces/sparkle"
 ns = {"sparkle": SPARKLE}
@@ -165,6 +234,20 @@ def attr_key(raw):
     return raw
 
 
+def safe_archive_basename(value, extension, label):
+    parts = urlsplit(value)
+    if parts.scheme != "https" or not parts.netloc:
+        raise SystemExit(f"{label} URL is not an absolute HTTPS URL: {value!r}")
+    basename = parts.path.rsplit("/", 1)[-1]
+    if not basename or not basename.endswith(f".{extension}"):
+        raise SystemExit(f"{label} has invalid .{extension} basename: {basename!r}")
+    if any(part in basename for part in ("/", "\\", "..")) or any(
+        ord(char) < 32 or ord(char) == 127 for char in basename
+    ):
+        raise SystemExit(f"{label} has unsafe basename: {basename!r}")
+    return basename
+
+
 root = ET.parse(sys.stdin).getroot()
 item = root.find("./channel/item")
 if item is None:
@@ -173,6 +256,8 @@ enclosure = item.find("enclosure")
 if enclosure is None:
     raise SystemExit("appcast item has no enclosure")
 sparkle_sig_key = sparkle_attr("edSignature")
+enclosure_url = enclosure.attrib.get("url", "")
+source_basename = safe_archive_basename(enclosure_url, "zip", "appcast enclosure")
 
 # Capture every <sparkle:deltas>/<enclosure> verbatim. The mirror reuses the
 # official bytes and the official edSignature untouched; it never runs
@@ -185,7 +270,7 @@ deltas_el = item.find("sparkle:deltas", namespaces=ns)
 if deltas_el is not None:
     for delta in deltas_el.findall("enclosure"):
         url = delta.attrib.get("url", "")
-        basename = url.rsplit("/", 1)[-1] if url else ""
+        basename = safe_archive_basename(url, "delta", "appcast delta enclosure")
         attributes = {attr_key(k): v for k, v in delta.attrib.items()}
         deltas.append(
             {
@@ -208,7 +293,8 @@ payload = {
     "shortVersionString": item.findtext("sparkle:shortVersionString", namespaces=ns) or "",
     "minimumSystemVersion": item.findtext("sparkle:minimumSystemVersion", namespaces=ns) or "",
     "hardwareRequirements": item.findtext("sparkle:hardwareRequirements", namespaces=ns) or "",
-    "enclosureUrl": enclosure.attrib.get("url", ""),
+    "enclosureUrl": enclosure_url,
+    "sourceBasename": source_basename,
     "enclosureLength": int(enclosure.attrib.get("length", "0") or "0"),
     "enclosureSignature": enclosure.attrib.get(sparkle_sig_key, ""),
     "deltas": deltas,
@@ -596,8 +682,8 @@ public_mirror_objects_match() {
   local dir
   local live_manifest
   local current_view
-  local arm_short_version
-  local x64_short_version
+  local arm_mirror_basename
+  local x64_mirror_basename
 
   dir="$(mktemp -d)"
   live_manifest="$dir/live-manifest.json"
@@ -612,10 +698,8 @@ public_mirror_objects_match() {
   fi
 
   manifest="$current_view"
-  arm_short_version="$(jq -r '.sources.macos.arm64.appcast.shortVersionString // ""' "$manifest")"
-  x64_short_version="$(jq -r '.sources.macos.x64.appcast.shortVersionString // ""' "$manifest")"
-
-  if [[ -z "$arm_short_version" || -z "$x64_short_version" ]]; then
+  if ! arm_mirror_basename="$(manifest_mirror_enclosure_basename "$manifest" arm64 arm64)" ||
+     ! x64_mirror_basename="$(manifest_mirror_enclosure_basename "$manifest" x64 x64)"; then
     rm -rf "$dir"
     return 1
   fi
@@ -648,11 +732,11 @@ public_mirror_objects_match() {
       "$(jq -r '.sources.macos.x64.contentLength // 0' "$manifest")" &&
     public_mirror_object_size_matches \
       "public mirror macOS arm64 Sparkle archive" \
-      "latest/mac/arm64/Codex-darwin-arm64-${arm_short_version}.zip" \
+      "latest/mac/arm64/${arm_mirror_basename}" \
       "$(jq -r '.sources.macos.arm64.appcast.enclosureLength // 0' "$manifest")" &&
     public_mirror_object_size_matches \
       "public mirror macOS x64 Sparkle archive" \
-      "latest/mac/intel/Codex-darwin-x64-${x64_short_version}.zip" \
+      "latest/mac/intel/${x64_mirror_basename}" \
       "$(jq -r '.sources.macos.x64.appcast.enclosureLength // 0' "$manifest")" &&
     public_mirror_delta_objects_match "$manifest" arm64 arm64 &&
     public_mirror_delta_objects_match "$manifest" x64 intel; then
@@ -722,7 +806,7 @@ resolve_store_link() {
 
   for ((attempt = 1; attempt <= max_attempts; attempt++)); do
     echo "Resolving Microsoft Store $desired_arch package link (attempt $attempt/$max_attempts)" >&2
-    if dotnet run --project scripts/store-link -- "$product_id" "$desired_arch"; then
+    if dotnet run --project scripts/store-link -- "$product_id" "$desired_arch" "$package_identity"; then
       return 0
     fi
 
@@ -765,7 +849,7 @@ resolve_store_package_line() {
   local line
 
   line="$(resolve_store_link "$desired_arch" "$max_attempts" "$delay" |
-    awk '/^OpenAI\.Codex_/ { print; exit }')"
+    awk -v prefix="${package_identity}_" 'index($0, prefix) == 1 { print; exit }')"
   if [[ -z "$line" ]]; then
     echo "No Microsoft Store package link was resolved." >&2
     exit 1
@@ -919,7 +1003,7 @@ fi
 
 windows_arm64_link_output=""
 if windows_arm64_link_output="$(resolve_store_link arm64 "${STORE_LINK_OPTIONAL_MAX_ATTEMPTS:-1}" "${STORE_LINK_OPTIONAL_RETRY_DELAY_SECONDS:-0}")"; then
-  windows_arm64_link_line="$(awk '/^OpenAI\.Codex_/ { print; exit }' <<<"$windows_arm64_link_output")"
+  windows_arm64_link_line="$(awk -v prefix="${package_identity}_" 'index($0, prefix) == 1 { print; exit }' <<<"$windows_arm64_link_output")"
   if [[ -n "$windows_arm64_link_line" ]]; then
     windows_arm64_package="${windows_arm64_link_line%%$'\t'*}"
     windows_arm64_url="${windows_arm64_link_line#*$'\t'}"
@@ -950,14 +1034,27 @@ arm_appcast_version="$(jq -r '.shortVersionString' <<<"$arm_appcast_json")"
 arm_appcast_build="$(jq -r '.version' <<<"$arm_appcast_json")"
 x64_appcast_version="$(jq -r '.shortVersionString' <<<"$x64_appcast_json")"
 x64_appcast_build="$(jq -r '.version' <<<"$x64_appcast_json")"
+arm_source_basename="$(jq -r '.sourceBasename // empty' <<<"$arm_appcast_json")"
+x64_source_basename="$(jq -r '.sourceBasename // empty' <<<"$x64_appcast_json")"
 
 if [[ -z "$arm_appcast_version" || -z "$arm_appcast_build" || -z "$x64_appcast_version" || -z "$x64_appcast_build" ]]; then
   echo "Missing macOS appcast version metadata." >&2
   exit 1
 fi
+validate_safe_basename "macOS arm64 source enclosure" "$arm_source_basename" zip || exit 1
+validate_safe_basename "macOS x64 source enclosure" "$x64_source_basename" zip || exit 1
 
-arm_url="https://persistent.oaistatic.com/codex-app-prod/Codex-${arm_appcast_version}-arm64.dmg"
-x64_url="https://persistent.oaistatic.com/codex-app-prod/Codex-${x64_appcast_version}-x64.dmg"
+# Upstream names are data; mirror names are our stable public ABI. Record both
+# once in the probe manifest so every later stage consumes the same contract.
+arm_mirror_basename="Codex-darwin-arm64-${arm_appcast_version}.zip"
+x64_mirror_basename="Codex-darwin-x64-${x64_appcast_version}.zip"
+validate_safe_basename "macOS arm64 mirror enclosure" "$arm_mirror_basename" zip || exit 1
+validate_safe_basename "macOS x64 mirror enclosure" "$x64_mirror_basename" zip || exit 1
+arm_appcast_json="$(jq -c --arg basename "$arm_mirror_basename" '.mirrorEnclosureBasename = $basename' <<<"$arm_appcast_json")"
+x64_appcast_json="$(jq -c --arg basename "$x64_mirror_basename" '.mirrorEnclosureBasename = $basename' <<<"$x64_appcast_json")"
+
+arm_url="$(derive_macos_dmg_url "$(jq -r '.enclosureUrl' <<<"$arm_appcast_json")" arm64 "$arm_appcast_version")"
+x64_url="$(derive_macos_dmg_url "$(jq -r '.enclosureUrl' <<<"$x64_appcast_json")" x64 "$x64_appcast_version")"
 arm_headers="$(curl_head "macOS arm64 DMG" "$arm_url")"
 x64_headers="$(curl_head "macOS x64 DMG" "$x64_url")"
 arm_content_length="$(header_value "$arm_headers" "content-length")"

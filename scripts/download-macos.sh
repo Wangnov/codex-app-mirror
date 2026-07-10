@@ -13,6 +13,8 @@ arm_zip_url=""
 x64_zip_url=""
 arm_zip_expected_size=""
 x64_zip_expected_size=""
+arm_zip_source_name=""
+x64_zip_source_name=""
 arm_zip_name=""
 x64_zip_name=""
 curl_retry_args=(
@@ -59,9 +61,48 @@ download_file() {
     "$url"
 }
 
+validate_safe_basename() {
+  local label="$1"
+  local value="$2"
+  local extension="$3"
+
+  if [[ -z "$value" || "$value" == "null" ||
+        "$value" == *"/"* || "$value" == *\\* || "$value" == *".."* ||
+        "$value" != *".$extension" ]] ||
+     LC_ALL=C printf '%s' "$value" | grep -q '[[:cntrl:]]'; then
+    echo "Invalid $label basename: '$value'." >&2
+    return 1
+  fi
+}
+
+require_url_basename() {
+  local label="$1"
+  local url="$2"
+  local expected="$3"
+
+  python3 - "$label" "$url" "$expected" <<'PY'
+import sys
+from urllib.parse import urlsplit
+
+label, url, expected = sys.argv[1:]
+parts = urlsplit(url)
+actual = parts.path.rsplit("/", 1)[-1]
+if parts.scheme != "https" or not parts.netloc:
+    raise SystemExit(f"{label} URL is not an absolute HTTPS URL: {url!r}")
+if actual != expected:
+    raise SystemExit(
+        f"{label} source basename mismatch: URL has {actual!r}, manifest has {expected!r}"
+    )
+PY
+}
+
 if [[ -n "$manifest_path" ]]; then
   if ! command -v jq >/dev/null 2>&1; then
     echo "jq is required when a probe manifest is provided." >&2
+    exit 1
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "python3 is required when a probe manifest is provided." >&2
     exit 1
   fi
 
@@ -75,23 +116,23 @@ if [[ -n "$manifest_path" ]]; then
   arm_expected_size="$(jq -r '.sources.macos.arm64.contentLength' "$manifest_path")"
   x64_expected_size="$(jq -r '.sources.macos.x64.contentLength' "$manifest_path")"
 
-  # Sparkle update archives (.zip) referenced by the official appcast. These are
-  # what the macOS auto-updater (and the downstream Codex App Manager client)
-  # actually download, so the mirror must host them too. We name them by their
-  # official basename (Codex-darwin-<arch>-<shortVersion>.zip) so the generated
-  # appcast enclosure URL stays stable and predictable.
+  # Sparkle source names follow upstream branding; mirror names are our stable
+  # Codex ABI. Both are explicit in the probe manifest so no stage reconstructs
+  # an upstream filename or independently guesses the mirror object key.
   arm_zip_url="$(jq -r '.sources.macos.arm64.appcast.enclosureUrl // ""' "$manifest_path")"
   x64_zip_url="$(jq -r '.sources.macos.x64.appcast.enclosureUrl // ""' "$manifest_path")"
   arm_zip_expected_size="$(jq -r '.sources.macos.arm64.appcast.enclosureLength // 0' "$manifest_path")"
   x64_zip_expected_size="$(jq -r '.sources.macos.x64.appcast.enclosureLength // 0' "$manifest_path")"
-  arm_zip_short_version="$(jq -r '.sources.macos.arm64.appcast.shortVersionString // ""' "$manifest_path")"
-  x64_zip_short_version="$(jq -r '.sources.macos.x64.appcast.shortVersionString // ""' "$manifest_path")"
-  if [[ -n "$arm_zip_short_version" ]]; then
-    arm_zip_name="Codex-darwin-arm64-${arm_zip_short_version}.zip"
-  fi
-  if [[ -n "$x64_zip_short_version" ]]; then
-    x64_zip_name="Codex-darwin-x64-${x64_zip_short_version}.zip"
-  fi
+  arm_zip_source_name="$(jq -r '.sources.macos.arm64.appcast.sourceBasename // ""' "$manifest_path")"
+  x64_zip_source_name="$(jq -r '.sources.macos.x64.appcast.sourceBasename // ""' "$manifest_path")"
+  arm_zip_name="$(jq -r '.sources.macos.arm64.appcast.mirrorEnclosureBasename // ""' "$manifest_path")"
+  x64_zip_name="$(jq -r '.sources.macos.x64.appcast.mirrorEnclosureBasename // ""' "$manifest_path")"
+  validate_safe_basename "macOS arm64 source enclosure" "$arm_zip_source_name" zip || exit 1
+  validate_safe_basename "macOS x64 source enclosure" "$x64_zip_source_name" zip || exit 1
+  validate_safe_basename "macOS arm64 mirror enclosure" "$arm_zip_name" zip || exit 1
+  validate_safe_basename "macOS x64 mirror enclosure" "$x64_zip_name" zip || exit 1
+  require_url_basename "macOS arm64 Sparkle archive" "$arm_zip_url" "$arm_zip_source_name"
+  require_url_basename "macOS x64 Sparkle archive" "$x64_zip_url" "$x64_zip_source_name"
 else
   arm_url="https://persistent.oaistatic.com/codex-app-prod/Codex.dmg"
   x64_url="https://persistent.oaistatic.com/codex-app-prod/Codex-latest-x64.dmg"
@@ -176,10 +217,8 @@ download_deltas() {
       # probe did not record one explicitly.
       basename="${url##*/}"
     fi
-    if [[ -z "$basename" ]]; then
-      echo "Could not determine macOS $arch_key delta[$i] basename." >&2
-      exit 1
-    fi
+    validate_safe_basename "macOS $arch_key delta[$i]" "$basename" delta || exit 1
+    require_url_basename "macOS $arch_key delta[$i]" "$url" "$basename"
 
     download_file "macOS $arch_key Sparkle delta ($basename)" "$url" "$out_dir/$basename"
     validate_size "$out_dir/$basename" "$expected_size"

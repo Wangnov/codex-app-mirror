@@ -49,6 +49,8 @@ cat > "$tmp_dir/latest-release-manifest.json" <<JSON
           "minimumSystemVersion": "12.0",
           "hardwareRequirements": "arm64",
           "enclosureUrl": "https://persistent.oaistatic.com/codex-app-prod/Codex-darwin-arm64-26.608.12217.zip",
+          "sourceBasename": "Codex-darwin-arm64-26.608.12217.zip",
+          "mirrorEnclosureBasename": "Codex-darwin-arm64-26.608.12217.zip",
           "enclosureLength": 3,
           "enclosureSignature": "arm-signature-608",
           "deltas": []
@@ -66,6 +68,8 @@ cat > "$tmp_dir/latest-release-manifest.json" <<JSON
           "minimumSystemVersion": "12.0",
           "hardwareRequirements": "",
           "enclosureUrl": "https://persistent.oaistatic.com/codex-app-prod/Codex-darwin-x64-26.608.12217.zip",
+          "sourceBasename": "Codex-darwin-x64-26.608.12217.zip",
+          "mirrorEnclosureBasename": "Codex-darwin-x64-26.608.12217.zip",
           "enclosureLength": 3,
           "enclosureSignature": "x64-signature-608",
           "deltas": []
@@ -85,8 +89,12 @@ cat > "$tmp_dir/bin/dotnet" <<'DOTNET'
 set -euo pipefail
 
 if [[ "${1:-}" == "run" ]]; then
-  if [[ "$*" == *" arm64" ]]; then
-    echo "No matching package found for 9PLM9XGG6VKS / arm64." >&2
+  if [[ "${!#}" != "OpenAI.Codex" ]]; then
+    echo "store-link did not receive the exact Stable package identity: $*" >&2
+    exit 1
+  fi
+  if [[ "$*" == *" arm64 OpenAI.Codex" ]]; then
+    echo "No matching package found for 9PLM9XGG6VKS / OpenAI.Codex / arm64." >&2
     exit 1
   fi
   printf 'OpenAI.Codex_26.608.1337.0_x64__2p2nqsd0c76g0\thttps://download.example/OpenAI.Codex_26.608.1337.0_x64__2p2nqsd0c76g0.Msix\n'

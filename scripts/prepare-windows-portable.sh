@@ -12,18 +12,108 @@ require() {
 }
 
 require mkdir
+require python3
 require rm
 require unzip
 require zip
+
+readonly EXPECTED_PACKAGE_IDENTITY="OpenAI.Codex"
 
 if [[ ! -f "$msix_path" ]]; then
   echo "MSIX not found: $msix_path" >&2
   exit 1
 fi
 
-manifest="$(unzip -p "$msix_path" AppxManifest.xml)"
-version="$(sed -nE 's/.*<Identity[^>]* Version="([^"]+)".*/\1/p' <<<"$manifest" | head -n 1)"
-version="${version:-unknown}"
+metadata="$({
+  python3 - "$msix_path" "$EXPECTED_PACKAGE_IDENTITY" <<'PY'
+import pathlib
+import sys
+import xml.etree.ElementTree as ET
+import zipfile
+
+
+def local_name(value: str) -> str:
+    return value.rsplit("}", 1)[-1]
+
+
+def attribute(element: ET.Element, name: str) -> str:
+    for key, value in element.attrib.items():
+        if local_name(key) == name:
+            return value
+    return ""
+
+
+try:
+    msix_path, expected_identity = sys.argv[1:]
+    with zipfile.ZipFile(msix_path) as archive:
+        manifest_names = [
+            name for name in archive.namelist()
+            if name.lower() == "appxmanifest.xml"
+        ]
+        if len(manifest_names) != 1:
+            raise ValueError("MSIX must contain exactly one top-level AppxManifest.xml")
+        root = ET.fromstring(archive.read(manifest_names[0]))
+
+    identity = next(
+        (element for element in root.iter() if local_name(element.tag) == "Identity"),
+        None,
+    )
+    identity_name = attribute(identity, "Name") if identity is not None else ""
+    if identity_name != expected_identity:
+        raise ValueError(
+            f"package identity must be {expected_identity!r}, got {identity_name!r}"
+        )
+    version = attribute(identity, "Version") if identity is not None else ""
+    if not version:
+        version = "unknown"
+
+    executables = {
+        attribute(element, "Executable")
+        for element in root.iter()
+        if local_name(element.tag) == "Application"
+        and attribute(element, "Executable")
+    }
+    if len(executables) != 1:
+        raise ValueError(
+            "AppxManifest.xml must declare exactly one distinct Application Executable"
+        )
+
+    package_executable = executables.pop().replace("\\", "/")
+    path = pathlib.PurePosixPath(package_executable)
+    if (
+        path.is_absolute()
+        or len(path.parts) < 2
+        or path.parts[0].lower() != "app"
+        or any(part in ("", ".", "..") for part in path.parts)
+    ):
+        raise ValueError(
+            f"Application Executable must be a safe path below app/: {package_executable!r}"
+        )
+
+    portable_executable = pathlib.PurePosixPath(*path.parts[1:]).as_posix()
+    if (
+        not portable_executable.lower().endswith(".exe")
+        or any(character in portable_executable for character in ('\r', '\n', '\t', '"', '%'))
+    ):
+        raise ValueError(f"unsafe Application Executable: {package_executable!r}")
+
+    print(f"{version}\t{portable_executable}")
+except (ET.ParseError, OSError, ValueError, zipfile.BadZipFile) as error:
+    raise SystemExit(f"Invalid Windows MSIX metadata: {error}")
+PY
+} 2>&1)" || {
+  printf '%s\n' "$metadata" >&2
+  exit 1
+}
+
+if [[ "$metadata" != *$'\t'* ]]; then
+  echo "Invalid Windows MSIX metadata output." >&2
+  exit 1
+fi
+
+version="${metadata%%$'\t'*}"
+portable_executable="${metadata#*$'\t'}"
+portable_executable_windows="${portable_executable//\//\\}"
 
 package_dir="$output_root/Codex-Windows-x64-portable-$version"
 zip_path="$output_root/Codex-Windows-x64-portable-$version.zip"
@@ -41,20 +131,34 @@ trap cleanup EXIT
 unzip -q "$msix_path" 'app/*' -d "$tmp_dir"
 cp -R "$tmp_dir/app/." "$package_dir/"
 
-cat > "$package_dir/Run-Codex.cmd" <<'EOF'
+if [[ ! -f "$package_dir/$portable_executable" ]]; then
+  echo "AppxManifest Application executable was not found in the MSIX app payload: $portable_executable" >&2
+  exit 1
+fi
+
+{
+  cat <<'EOF'
 @echo off
 setlocal
-set "CODEX_EXE=%~dp0Codex.exe"
+EOF
+  printf 'set "CODEX_EXE_REL=%s"\n' "$portable_executable_windows"
+  cat <<'EOF'
+set "CODEX_EXE=%~dp0%CODEX_EXE_REL%"
 if not exist "%CODEX_EXE%" (
-  echo Codex.exe was not found next to this script.
+  echo %CODEX_EXE_REL% was not found next to this script.
   exit /b 1
 )
 start "" "%CODEX_EXE%" %*
 EOF
+} > "$package_dir/Run-Codex.cmd"
 
-cat > "$package_dir/Install-Current-User.cmd" <<'EOF'
+{
+  cat <<'EOF'
 @echo off
 setlocal
+EOF
+  printf 'set "CODEX_EXE_REL=%s"\n' "$portable_executable_windows"
+  cat <<'EOF'
 set "SOURCE_DIR=%~dp0"
 set "TARGET_DIR=%LOCALAPPDATA%\Programs\Codex"
 set "SHORTCUT_DIR=%APPDATA%\Microsoft\Windows\Start Menu\Programs"
@@ -68,7 +172,7 @@ if errorlevel 8 (
   exit /b 1
 )
 
-powershell -NoProfile -Command "$w=New-Object -ComObject WScript.Shell; $s=$w.CreateShortcut($env:SHORTCUT); $s.TargetPath=(Join-Path $env:TARGET_DIR 'Codex.exe'); $s.WorkingDirectory=$env:TARGET_DIR; $s.IconLocation=(Join-Path $env:TARGET_DIR 'resources\icon.ico'); $s.Save()"
+powershell -NoProfile -Command "$w=New-Object -ComObject WScript.Shell; $s=$w.CreateShortcut($env:SHORTCUT); $s.TargetPath=(Join-Path $env:TARGET_DIR $env:CODEX_EXE_REL); $s.WorkingDirectory=$env:TARGET_DIR; $s.IconLocation=(Join-Path $env:TARGET_DIR 'resources\icon.ico'); $s.Save()"
 
 echo Codex was installed for the current user:
 echo %TARGET_DIR%
@@ -76,6 +180,7 @@ echo.
 echo Start Menu shortcut:
 echo %SHORTCUT%
 EOF
+} > "$package_dir/Install-Current-User.cmd"
 
 cat > "$package_dir/Uninstall-Current-User.cmd" <<'EOF'
 @echo off
@@ -94,6 +199,7 @@ Codex Windows portable package
 Version: $version
 
 This package was produced by extracting the app/ payload from the official MSIX.
+The launcher target was read from AppxManifest.xml: $portable_executable_windows
 It is not a normal MSIX installation and does not register package identity,
 the codex:// protocol, file associations, Microsoft Store updates, or MSIX
 deployment metadata.

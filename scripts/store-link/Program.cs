@@ -9,6 +9,7 @@ using System.Xml.Linq;
 
 internal static class Program
 {
+    private const string DefaultPackageIdentity = "OpenAI.Codex";
     private const string DisplayCatalogBaseUrl = "https://displaycatalog.mp.microsoft.com/v7.0/products";
     private const string Fe3Host = "fe3.delivery.mp.microsoft.com";
     private const string Fe3Endpoint = "https://fe3.delivery.mp.microsoft.com/ClientWebService/client.asmx";
@@ -90,13 +91,12 @@ internal static class Program
 
         var productId = args[0];
         var architecture = NormalizeArchitecture(args.Length > 1 ? args[1] : "x64");
-        var packageIdentity = args.Length > 2 ? args[2] : "OpenAI.Codex";
-        if (string.IsNullOrWhiteSpace(packageIdentity))
+        var packageIdentity = args.Length > 2 ? args[2].Trim() : DefaultPackageIdentity;
+        if (string.IsNullOrWhiteSpace(packageIdentity) || packageIdentity.Contains('_'))
         {
-            Console.Error.WriteLine("package-identity must not be empty.");
+            Console.Error.WriteLine($"Invalid package identity: '{packageIdentity}'.");
             return 2;
         }
-        var productPrefix = packageIdentity + "_";
 
         using var handler = new HttpClientHandler
         {
@@ -117,14 +117,14 @@ internal static class Program
             var syncXml = await SyncUpdatesAsync(httpClient, cookie, wuCategoryId, deviceAttributes);
             var candidates = ParsePackageCandidates(syncXml);
             var package = candidates
-                .Where(p => p.PackageMoniker.StartsWith(productPrefix, StringComparison.OrdinalIgnoreCase))
+                .Where(p => MatchesPackageIdentity(p.PackageMoniker, packageIdentity))
                 .Where(p => p.PackageMoniker.Contains($"_{architecture}__", StringComparison.OrdinalIgnoreCase))
                 .OrderByDescending(p => ExtractVersion(p.PackageMoniker))
                 .FirstOrDefault();
 
             if (package is null)
             {
-                Console.Error.WriteLine($"No matching package found for {productId} / {architecture}.");
+                Console.Error.WriteLine($"No matching package found for {productId} / {packageIdentity} / {architecture}.");
                 foreach (var candidate in candidates.OrderBy(c => c.PackageMoniker, StringComparer.OrdinalIgnoreCase))
                 {
                     Console.Error.WriteLine($"{candidate.PackageType}\t{candidate.PackageMoniker}\t{candidate.UpdateId}/{candidate.RevisionNumber}");
@@ -551,6 +551,13 @@ internal static class Program
         }
 
         return new Version(0, 0, 0, 0);
+    }
+
+    private static bool MatchesPackageIdentity(string packageMoniker, string expectedIdentity)
+    {
+        var separator = packageMoniker.IndexOf('_');
+        return separator > 0
+            && packageMoniker[..separator].Equals(expectedIdentity, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string NormalizeArchitecture(string architecture)

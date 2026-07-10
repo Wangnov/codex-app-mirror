@@ -252,10 +252,14 @@ export function buildObjectPlan(manifest, releaseTag) {
     required: true,
   });
 
-  const armShortVersion = macos.arm64?.appcast?.shortVersionString;
-  const x64ShortVersion = macos.x64?.appcast?.shortVersionString;
-  if (armShortVersion) {
-    const basename = `Codex-darwin-arm64-${armShortVersion}.zip`;
+  const armZipBasename = mirrorEnclosureBasename(
+    manifest,
+    macos.arm64?.appcast,
+    "arm64",
+  );
+  const x64ZipBasename = mirrorEnclosureBasename(manifest, macos.x64?.appcast, "x64");
+  if (armZipBasename) {
+    const basename = armZipBasename;
     addItem(items, {
       id: "mac-arm64-zip",
       sourceKey: `latest/mac/arm64/${basename}`,
@@ -267,8 +271,8 @@ export function buildObjectPlan(manifest, releaseTag) {
       required: true,
     });
   }
-  if (x64ShortVersion) {
-    const basename = `Codex-darwin-x64-${x64ShortVersion}.zip`;
+  if (x64ZipBasename) {
+    const basename = x64ZipBasename;
     addItem(items, {
       id: "mac-x64-zip",
       sourceKey: `latest/mac/intel/${basename}`,
@@ -340,12 +344,53 @@ export function buildObjectPlan(manifest, releaseTag) {
   };
 }
 
+function validateArchiveBasename(value, extension, label) {
+  const basename = String(value || "");
+  if (
+    !basename ||
+    basename.includes("/") ||
+    basename.includes("\\") ||
+    basename.includes("..") ||
+    /[\x00-\x1f\x7f]/.test(basename) ||
+    !basename.endsWith(`.${extension}`)
+  ) {
+    throw new NonRetryableMirrorError(`Invalid ${label} basename: ${JSON.stringify(basename)}.`);
+  }
+  return basename;
+}
+
+function mirrorEnclosureBasename(manifest, appcast, archiveArch) {
+  const explicit = appcast?.mirrorEnclosureBasename;
+  if (explicit) {
+    return validateArchiveBasename(explicit, "zip", `macOS ${archiveArch} mirror enclosure`);
+  }
+
+  if (Number(manifest?.schemaVersion || 0) >= 5) {
+    throw new NonRetryableMirrorError(
+      `Schema-5 manifest is missing macOS ${archiveArch} mirrorEnclosureBasename.`,
+    );
+  }
+
+  // Compatibility with the existing public schema-4 snapshot. New manifests
+  // always carry the explicit mirror ABI basename.
+  const shortVersion = appcast?.shortVersionString;
+  if (!shortVersion) {
+    return "";
+  }
+  return validateArchiveBasename(
+    `Codex-darwin-${archiveArch}-${shortVersion}.zip`,
+    "zip",
+    `legacy macOS ${archiveArch} mirror enclosure`,
+  );
+}
+
 function addDeltas(items, deltas, mirrorDir) {
   for (const delta of deltas) {
-    const basename = delta.basename || String(delta.url || "").split("/").pop();
-    if (!basename) {
-      throw new NonRetryableMirrorError("Manifest delta entry is missing basename/url.");
-    }
+    const basename = validateArchiveBasename(
+      delta.basename || String(delta.url || "").split("/").pop(),
+      "delta",
+      `macOS ${mirrorDir} delta`,
+    );
     addItem(items, {
       id: `mac-${mirrorDir}-delta-${basename}`,
       sourceKey: `latest/mac/${mirrorDir}/${basename}`,

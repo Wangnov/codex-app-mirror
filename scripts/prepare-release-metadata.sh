@@ -28,6 +28,20 @@ validate_release_tag() {
   fi
 }
 
+validate_safe_basename() {
+  local label="$1"
+  local value="$2"
+  local extension="$3"
+
+  if [[ -z "$value" || "$value" == "null" ||
+        "$value" == *"/"* || "$value" == *\\* || "$value" == *".."* ||
+        "$value" != *".$extension" ]] ||
+     LC_ALL=C printf '%s' "$value" | grep -q '[[:cntrl:]]'; then
+    echo "Invalid $label basename: '$value'." >&2
+    return 1
+  fi
+}
+
 github_output_value() {
   local name="$1"
   local value="$2"
@@ -147,11 +161,21 @@ mac_x64_version="$(jq -r '.macos.x64.bundleShortVersion' "$macos_metadata")"
 mac_x64_build="$(jq -r '.macos.x64.bundleVersion' "$macos_metadata")"
 mac_common_version="$(jq -r '.commonShortVersion // empty' "$macos_metadata")"
 mac_common_build="$(jq -r '.commonBundleVersion // empty' "$macos_metadata")"
+mac_arm_zip_file="$(jq -r '.macos.arm64.sparkleArchiveFileName // empty' "$macos_metadata")"
+mac_arm_zip_verified="$(jq -r '.macos.arm64.sparkleArchiveIdentityVerified // false' "$macos_metadata")"
+mac_arm_zip_version="$(jq -r '.macos.arm64.sparkleArchiveBundleShortVersion // empty' "$macos_metadata")"
+mac_arm_zip_build="$(jq -r '.macos.arm64.sparkleArchiveBundleVersion // empty' "$macos_metadata")"
+mac_x64_zip_file="$(jq -r '.macos.x64.sparkleArchiveFileName // empty' "$macos_metadata")"
+mac_x64_zip_verified="$(jq -r '.macos.x64.sparkleArchiveIdentityVerified // false' "$macos_metadata")"
+mac_x64_zip_version="$(jq -r '.macos.x64.sparkleArchiveBundleShortVersion // empty' "$macos_metadata")"
+mac_x64_zip_build="$(jq -r '.macos.x64.sparkleArchiveBundleVersion // empty' "$macos_metadata")"
 mac_arm_appcast_version="$(jq -r '.sources.macos.arm64.appcast.shortVersionString // empty' "$probe_manifest")"
 mac_arm_appcast_build="$(jq -r '.sources.macos.arm64.appcast.version // empty' "$probe_manifest")"
+mac_arm_mirror_basename="$(jq -r '.sources.macos.arm64.appcast.mirrorEnclosureBasename // empty' "$probe_manifest")"
 mac_arm_pub_date="$(jq -r '.sources.macos.arm64.appcast.pubDate // .sources.macos.arm64.lastModified // empty' "$probe_manifest")"
 mac_x64_appcast_version="$(jq -r '.sources.macos.x64.appcast.shortVersionString // empty' "$probe_manifest")"
 mac_x64_appcast_build="$(jq -r '.sources.macos.x64.appcast.version // empty' "$probe_manifest")"
+mac_x64_mirror_basename="$(jq -r '.sources.macos.x64.appcast.mirrorEnclosureBasename // empty' "$probe_manifest")"
 mac_x64_pub_date="$(jq -r '.sources.macos.x64.appcast.pubDate // .sources.macos.x64.lastModified // empty' "$probe_manifest")"
 
 if [[ -z "$windows_package_version" || -z "$windows_package" || -z "$mac_arm_version" || -z "$mac_arm_build" || -z "$mac_x64_version" || -z "$mac_x64_build" ]]; then
@@ -175,6 +199,26 @@ fi
 
 if [[ -n "$mac_x64_appcast_build" && "$mac_x64_appcast_build" != "$mac_x64_build" ]]; then
   echo "macOS Intel DMG build differs from appcast; keeping both: appcast=$mac_x64_appcast_build dmg=$mac_x64_build" >&2
+fi
+
+if [[ "$mac_arm_zip_verified" != "true" || "$mac_x64_zip_verified" != "true" ]]; then
+  echo "Both macOS Sparkle archives must pass the Stable identity gate." >&2
+  exit 1
+fi
+if [[ "$mac_arm_zip_file" != "$mac_arm_mirror_basename" ||
+      "$mac_x64_zip_file" != "$mac_x64_mirror_basename" ]]; then
+  echo "Verified macOS Sparkle archive filenames do not match mirrorEnclosureBasename." >&2
+  exit 1
+fi
+if [[ "$mac_arm_zip_version" != "$mac_arm_appcast_version" ||
+      "$mac_arm_zip_build" != "$mac_arm_appcast_build" ]]; then
+  echo "macOS arm64 Sparkle archive does not match appcast: appcast=${mac_arm_appcast_version}/${mac_arm_appcast_build} archive=${mac_arm_zip_version}/${mac_arm_zip_build}" >&2
+  exit 1
+fi
+if [[ "$mac_x64_zip_version" != "$mac_x64_appcast_version" ||
+      "$mac_x64_zip_build" != "$mac_x64_appcast_build" ]]; then
+  echo "macOS Intel Sparkle archive does not match appcast: appcast=${mac_x64_appcast_version}/${mac_x64_appcast_build} archive=${mac_x64_zip_version}/${mac_x64_zip_build}" >&2
+  exit 1
 fi
 
 windows_artifacts_dir="$artifacts_dir/codex-windows"
@@ -372,7 +416,7 @@ jq \
   --arg windowsArm64AppVersion "$windows_arm64_app_version" \
   --arg platformCompleteness "$platform_completeness" \
   '
-  .schemaVersion = 4
+  .schemaVersion = 5
   | .codexVersion = $codexVersion
   | .publishedAt = $publishedAt
   | .sources.windows.version = $windowsPackageVersion
@@ -405,6 +449,14 @@ jq \
   | .sources.macos.arm64.bundleShortVersion = $mac[0].macos.arm64.bundleShortVersion
   | .sources.macos.arm64.bundleVersion = $mac[0].macos.arm64.bundleVersion
   | .sources.macos.arm64.bundleIdentifier = $mac[0].macos.arm64.bundleIdentifier
+  | .sources.macos.arm64.bundleName = ($mac[0].macos.arm64.bundleName // "")
+  | .sources.macos.arm64.bundleExecutable = ($mac[0].macos.arm64.bundleExecutable // "")
+  | .sources.macos.arm64.teamIdentifier = ($mac[0].macos.arm64.teamIdentifier // "")
+  | .sources.macos.arm64.sparklePublicEdKey = ($mac[0].macos.arm64.sparklePublicEdKey // "")
+  | .sources.macos.arm64.sparkleArchiveFileName = ($mac[0].macos.arm64.sparkleArchiveFileName // "")
+  | .sources.macos.arm64.sparkleArchiveBundleShortVersion = ($mac[0].macos.arm64.sparkleArchiveBundleShortVersion // "")
+  | .sources.macos.arm64.sparkleArchiveBundleVersion = ($mac[0].macos.arm64.sparkleArchiveBundleVersion // "")
+  | .sources.macos.arm64.sparkleArchiveIdentityVerified = ($mac[0].macos.arm64.sparkleArchiveIdentityVerified // false)
   | .sources.macos.arm64.minimumSystemVersion = $mac[0].macos.arm64.minimumSystemVersion
   | .sources.macos.arm64.sha256 = $mac[0].macos.arm64.sha256
   | .sources.macos.arm64.downloadable = true
@@ -413,6 +465,14 @@ jq \
   | .sources.macos.x64.bundleShortVersion = $mac[0].macos.x64.bundleShortVersion
   | .sources.macos.x64.bundleVersion = $mac[0].macos.x64.bundleVersion
   | .sources.macos.x64.bundleIdentifier = $mac[0].macos.x64.bundleIdentifier
+  | .sources.macos.x64.bundleName = ($mac[0].macos.x64.bundleName // "")
+  | .sources.macos.x64.bundleExecutable = ($mac[0].macos.x64.bundleExecutable // "")
+  | .sources.macos.x64.teamIdentifier = ($mac[0].macos.x64.teamIdentifier // "")
+  | .sources.macos.x64.sparklePublicEdKey = ($mac[0].macos.x64.sparklePublicEdKey // "")
+  | .sources.macos.x64.sparkleArchiveFileName = ($mac[0].macos.x64.sparkleArchiveFileName // "")
+  | .sources.macos.x64.sparkleArchiveBundleShortVersion = ($mac[0].macos.x64.sparkleArchiveBundleShortVersion // "")
+  | .sources.macos.x64.sparkleArchiveBundleVersion = ($mac[0].macos.x64.sparkleArchiveBundleVersion // "")
+  | .sources.macos.x64.sparkleArchiveIdentityVerified = ($mac[0].macos.x64.sparkleArchiveIdentityVerified // false)
   | .sources.macos.x64.minimumSystemVersion = $mac[0].macos.x64.minimumSystemVersion
   | .sources.macos.x64.sha256 = $mac[0].macos.x64.sha256
   | .sources.macos.x64.downloadable = true
@@ -447,19 +507,20 @@ jq \
   ' "$probe_manifest" > "$tmp_manifest"
 mv "$tmp_manifest" release-manifest.json
 
+for mac_arch_key in arm64 x64; do
+  mac_mirror_basename="$(jq -r --arg a "$mac_arch_key" '.sources.macos[$a].appcast.mirrorEnclosureBasename // empty' release-manifest.json)"
+  validate_safe_basename "macOS $mac_arch_key mirror enclosure" "$mac_mirror_basename" zip || exit 1
+done
+
 macos_arch_files() {
   local arch_key="$1"
   local dmg_path="$2"
-  local zip_prefix="$3"
-  local short_version
   local basename
 
   printf '%s\n' "$dmg_path"
 
-  short_version="$(jq -r --arg a "$arch_key" '.sources.macos[$a].appcast.shortVersionString // empty' release-manifest.json)"
-  if [[ -n "$short_version" && "$short_version" != "null" ]]; then
-    printf '%s\n' "$artifacts_dir/codex-macos/${zip_prefix}-${short_version}.zip"
-  fi
+  basename="$(jq -r --arg a "$arch_key" '.sources.macos[$a].appcast.mirrorEnclosureBasename // empty' release-manifest.json)"
+  printf '%s\n' "$artifacts_dir/codex-macos/$basename"
 
   while IFS= read -r basename; do
     [[ -n "$basename" ]] || continue
@@ -506,14 +567,14 @@ if [[ "$include_macos_arm64" == "true" ]]; then
     [[ -n "$file" ]] || continue
     require_selected_file "$file"
     macos_selected_files+=("$file")
-  done < <(macos_arch_files arm64 "$artifacts_dir/codex-macos/Codex-mac-arm64.dmg" Codex-darwin-arm64)
+  done < <(macos_arch_files arm64 "$artifacts_dir/codex-macos/Codex-mac-arm64.dmg")
 fi
 if [[ "$include_macos_x64" == "true" ]]; then
   while IFS= read -r file; do
     [[ -n "$file" ]] || continue
     require_selected_file "$file"
     macos_selected_files+=("$file")
-  done < <(macos_arch_files x64 "$artifacts_dir/codex-macos/Codex-mac-x64.dmg" Codex-darwin-x64)
+  done < <(macos_arch_files x64 "$artifacts_dir/codex-macos/Codex-mac-x64.dmg")
 fi
 
 if [[ "$include_macos" == "true" ]]; then

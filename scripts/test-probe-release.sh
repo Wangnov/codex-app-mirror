@@ -75,7 +75,9 @@ cat > "$tmp_dir/latest-release-manifest.json" <<JSON
           "shortVersionString": "1.2.3",
           "minimumSystemVersion": "12.0",
           "hardwareRequirements": "arm64",
-          "enclosureUrl": "https://persistent.oaistatic.com/codex-app-prod/Codex-darwin-arm64-1.2.3.zip",
+          "enclosureUrl": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT-darwin-arm64-1.2.3.zip",
+          "sourceBasename": "ChatGPT-darwin-arm64-1.2.3.zip",
+          "mirrorEnclosureBasename": "Codex-darwin-arm64-1.2.3.zip",
           "enclosureLength": 3,
           "enclosureSignature": "arm-signature",
           "deltas": []
@@ -92,7 +94,9 @@ cat > "$tmp_dir/latest-release-manifest.json" <<JSON
           "shortVersionString": "1.2.3",
           "minimumSystemVersion": "12.0",
           "hardwareRequirements": "",
-          "enclosureUrl": "https://persistent.oaistatic.com/codex-app-prod/Codex-darwin-x64-1.2.3.zip",
+          "enclosureUrl": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT-darwin-x64-1.2.3.zip",
+          "sourceBasename": "ChatGPT-darwin-x64-1.2.3.zip",
+          "mirrorEnclosureBasename": "Codex-darwin-x64-1.2.3.zip",
           "enclosureLength": 3,
           "enclosureSignature": "x64-signature",
           "deltas": []
@@ -160,7 +164,9 @@ cat > "$tmp_dir/public-manifest.json" <<JSON
           "shortVersionString": "1.2.3",
           "minimumSystemVersion": "12.0",
           "hardwareRequirements": "arm64",
-          "enclosureUrl": "https://persistent.oaistatic.com/codex-app-prod/Codex-darwin-arm64-1.2.3.zip",
+          "enclosureUrl": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT-darwin-arm64-1.2.3.zip",
+          "sourceBasename": "ChatGPT-darwin-arm64-1.2.3.zip",
+          "mirrorEnclosureBasename": "Codex-darwin-arm64-1.2.3.zip",
           "enclosureLength": 3,
           "enclosureSignature": "arm-signature",
           "deltas": []
@@ -177,7 +183,9 @@ cat > "$tmp_dir/public-manifest.json" <<JSON
           "shortVersionString": "1.2.3",
           "minimumSystemVersion": "12.0",
           "hardwareRequirements": "",
-          "enclosureUrl": "https://persistent.oaistatic.com/codex-app-prod/Codex-darwin-x64-1.2.3.zip",
+          "enclosureUrl": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT-darwin-x64-1.2.3.zip",
+          "sourceBasename": "ChatGPT-darwin-x64-1.2.3.zip",
+          "mirrorEnclosureBasename": "Codex-darwin-x64-1.2.3.zip",
           "enclosureLength": 3,
           "enclosureSignature": "x64-signature",
           "deltas": []
@@ -203,8 +211,12 @@ cat > "$tmp_dir/bin/dotnet" <<'DOTNET'
 set -euo pipefail
 
 if [[ "${1:-}" == "run" ]]; then
-  if [[ "$*" == *" arm64" ]]; then
-    echo "No matching package found for 9PLM9XGG6VKS / arm64." >&2
+  if [[ "${!#}" != "OpenAI.Codex" ]]; then
+    echo "store-link did not receive the exact Stable package identity: $*" >&2
+    exit 1
+  fi
+  if [[ "$*" == *" arm64 OpenAI.Codex" ]]; then
+    echo "No matching package found for 9PLM9XGG6VKS / OpenAI.Codex / arm64." >&2
     exit 1
   fi
   printf 'OpenAI.Codex_1.2.3.4_x64__2p2nqsd0c76g0\thttps://download.example/OpenAI.Codex_1.2.3.4_x64__2p2nqsd0c76g0.Msix\n'
@@ -294,6 +306,14 @@ emit_appcast() {
   local arch="$1"
   local sig="$2"
   local hardware="$3"
+  local enclosure_url="https://persistent.oaistatic.com/codex-app-prod/ChatGPT-darwin-${arch}-1.2.3.zip"
+  local deltas=""
+
+  if [[ "${TEST_UNSAFE_APPCAST:-}" == "full" && "$arch" == "arm64" ]]; then
+    enclosure_url="http://persistent.oaistatic.com/codex-app-prod/ChatGPT-darwin-${arch}-1.2.3.zip"
+  elif [[ "${TEST_UNSAFE_APPCAST:-}" == "delta" && "$arch" == "arm64" ]]; then
+    deltas='<sparkle:deltas><enclosure url="https://persistent.oaistatic.com/codex-app-prod/bad..delta" length="3" sparkle:deltaFrom="4" sparkle:version="5" sparkle:edSignature="delta-signature" /></sparkle:deltas>'
+  fi
 
   cat <<XML
 <?xml version="1.0" encoding="utf-8"?>
@@ -306,7 +326,8 @@ emit_appcast() {
       <sparkle:shortVersionString>1.2.3</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
       <sparkle:hardwareRequirements>${hardware}</sparkle:hardwareRequirements>
-      <enclosure url="https://persistent.oaistatic.com/codex-app-prod/Codex-darwin-${arch}-1.2.3.zip" length="3" type="application/octet-stream" sparkle:edSignature="${sig}" />
+      <enclosure url="${enclosure_url}" length="3" type="application/octet-stream" sparkle:edSignature="${sig}" />
+      ${deltas}
     </item>
   </channel>
 </rss>
@@ -318,14 +339,14 @@ headers_for_url() {
     *OpenAI.Codex_1.2.3.4_x64__2p2nqsd0c76g0.Msix)
       emit_headers "windows-etag"
       ;;
-    *Codex-1.2.3-arm64.dmg)
+    *ChatGPT-1.2.3-arm64.dmg)
       emit_headers "arm-etag"
       ;;
-    *Codex-1.2.3-x64.dmg)
+    *ChatGPT-1.2.3-x64.dmg)
       emit_headers "x64-etag"
       ;;
-    *persistent.oaistatic.com/codex-app-prod/Codex-darwin-arm64-1.2.3.zip|\
-    *persistent.oaistatic.com/codex-app-prod/Codex-darwin-x64-1.2.3.zip)
+    *persistent.oaistatic.com/codex-app-prod/ChatGPT-darwin-arm64-1.2.3.zip|\
+    *persistent.oaistatic.com/codex-app-prod/ChatGPT-darwin-x64-1.2.3.zip)
       emit_headers "source-zip-etag"
       ;;
     *codexapp.agentsmirror.com/latest/win*|\
@@ -411,5 +432,68 @@ grep -F "latest_tag=$latest_tag" "$tmp_dir/output.txt"
 grep -F "latest release $latest_tag matches current sources, but public mirror aliases or appcasts are stale; republishing" "$tmp_dir/output.txt"
 test "$(jq -r '.sources.windows.architectures.arm64.status' "$tmp_dir/probe-manifest.json")" = "catalog-only"
 test "$(jq -r '.sources.windows.architectures.arm64.packageMoniker' "$tmp_dir/probe-manifest.json")" = "OpenAI.Codex_1.2.3.4_arm64__2p2nqsd0c76g0"
+test "$(jq -r '.sources.macos.arm64.url' "$tmp_dir/probe-manifest.json")" = "https://persistent.oaistatic.com/codex-app-prod/ChatGPT-1.2.3-arm64.dmg"
+test "$(jq -r '.sources.macos.arm64.appcast.sourceBasename' "$tmp_dir/probe-manifest.json")" = "ChatGPT-darwin-arm64-1.2.3.zip"
+test "$(jq -r '.sources.macos.arm64.appcast.mirrorEnclosureBasename' "$tmp_dir/probe-manifest.json")" = "Codex-darwin-arm64-1.2.3.zip"
+
+assert_unsafe_appcast_rejected() {
+  local mode="$1"
+  local expected="$2"
+  local output
+  local status
+
+  set +e
+  output="$(
+    cd "$repo_root"
+    PATH="$tmp_dir/bin:$PATH" \
+    TEST_GH_LOG="$gh_log" \
+    TEST_LATEST_TAG="$latest_tag" \
+    TEST_LATEST_MANIFEST="$tmp_dir/latest-release-manifest.json" \
+    TEST_LATEST_CHECKSUMS="$tmp_dir/latest-SHA256SUMS.txt" \
+    TEST_PUBLIC_MANIFEST="$tmp_dir/public-manifest.json" \
+    TEST_PUBLIC_APPCAST="$tmp_dir/public-appcast.xml" \
+    TEST_PUBLIC_APPCAST_X64="$tmp_dir/public-appcast-x64.xml" \
+    TEST_UNSAFE_APPCAST="$mode" \
+    STORE_LINK_MAX_ATTEMPTS=1 \
+    MANIFEST_PATH="$tmp_dir/unsafe-$mode.json" \
+      scripts/probe-release.sh 2>&1
+  )"
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]] || ! grep -Fq "$expected" <<<"$output"; then
+    echo "Expected unsafe $mode appcast fixture to be rejected" >&2
+    printf '%s\n' "$output" >&2
+    exit 1
+  fi
+}
+
+assert_unsafe_appcast_rejected full 'URL is not an absolute HTTPS URL'
+assert_unsafe_appcast_rejected delta 'appcast delta enclosure has unsafe basename'
+
+jq '
+  .schemaVersion = 5
+  | del(.sources.macos.arm64.appcast.mirrorEnclosureBasename)
+' "$tmp_dir/public-manifest.json" > "$tmp_dir/schema5-missing-basename.json"
+schema5_output="$(
+  cd "$repo_root"
+  PATH="$tmp_dir/bin:$PATH" \
+  TEST_GH_LOG="$gh_log" \
+  TEST_LATEST_TAG="$latest_tag" \
+  TEST_LATEST_MANIFEST="$tmp_dir/latest-release-manifest.json" \
+  TEST_LATEST_CHECKSUMS="$tmp_dir/latest-SHA256SUMS.txt" \
+  TEST_PUBLIC_MANIFEST="$tmp_dir/schema5-missing-basename.json" \
+  TEST_PUBLIC_APPCAST="$tmp_dir/public-appcast.xml" \
+  TEST_PUBLIC_APPCAST_X64="$tmp_dir/public-appcast-x64.xml" \
+  STORE_LINK_MAX_ATTEMPTS=1 \
+  MANIFEST_PATH="$tmp_dir/schema5-probe.json" \
+    scripts/probe-release.sh 2>&1
+)"
+if ! grep -Fq 'should_release=true' <<<"$schema5_output" ||
+   ! grep -Fq 'public mirror aliases or appcasts are stale; republishing' <<<"$schema5_output"; then
+  echo "Expected a malformed schema-5 public manifest to fail closed and trigger repair" >&2
+  printf '%s\n' "$schema5_output" >&2
+  exit 1
+fi
 
 echo "probe-release fixture test PASS"

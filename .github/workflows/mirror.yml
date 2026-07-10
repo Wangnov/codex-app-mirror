@@ -72,7 +72,19 @@ jobs:
           bash scripts/download-macos.sh dist/macos probe-manifest.json
 
       - name: Read macOS app metadata
-        run: bash scripts/read-macos-metadata.sh dist/macos/macos-metadata.json dist/macos/Codex-mac-arm64.dmg dist/macos/Codex-mac-x64.dmg
+        shell: bash
+        run: |
+          set -euo pipefail
+          arm_zip_basename="$(jq -r '.sources.macos.arm64.appcast.mirrorEnclosureBasename // empty' probe-manifest.json)"
+          x64_zip_basename="$(jq -r '.sources.macos.x64.appcast.mirrorEnclosureBasename // empty' probe-manifest.json)"
+          test -n "$arm_zip_basename"
+          test -n "$x64_zip_basename"
+          bash scripts/read-macos-metadata.sh \
+            dist/macos/macos-metadata.json \
+            dist/macos/Codex-mac-arm64.dmg \
+            dist/macos/Codex-mac-x64.dmg \
+            "dist/macos/$arm_zip_basename" \
+            "dist/macos/$x64_zip_basename"
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v7
@@ -185,13 +197,13 @@ jobs:
           add_macos_arch_assets() {
             local arch_key="$1"
             local dmg="$2"
-            local zip_prefix="$3"
-            local short_version
+            local zip_basename
             local zip
             local bn
 
-            short_version="$(jq -r --arg a "$arch_key" '.sources.macos[$a].appcast.shortVersionString' release-manifest.json)"
-            zip="artifacts/codex-macos/${zip_prefix}-${short_version}.zip"
+            zip_basename="$(jq -r --arg a "$arch_key" '.sources.macos[$a].appcast.mirrorEnclosureBasename // empty' release-manifest.json)"
+            test -n "$zip_basename"
+            zip="artifacts/codex-macos/${zip_basename}"
             test -f "$dmg"
             test -f "$zip"
             release_assets+=("$dmg" "$zip")
@@ -204,10 +216,10 @@ jobs:
           }
 
           if [[ "$INCLUDE_MACOS_ARM64" == "true" ]]; then
-            add_macos_arch_assets arm64 artifacts/codex-macos/Codex-mac-arm64.dmg Codex-darwin-arm64
+            add_macos_arch_assets arm64 artifacts/codex-macos/Codex-mac-arm64.dmg
           fi
           if [[ "$INCLUDE_MACOS_X64" == "true" ]]; then
-            add_macos_arch_assets x64 artifacts/codex-macos/Codex-mac-x64.dmg Codex-darwin-x64
+            add_macos_arch_assets x64 artifacts/codex-macos/Codex-mac-x64.dmg
           fi
           if [[ "$INCLUDE_MACOS" == "true" ]]; then
             test -f artifacts/codex-macos/SHA256SUMS-macos.txt
@@ -473,12 +485,14 @@ jobs:
           # Sparkle update archives the generated appcasts point at. Their object
           # keys (latest/mac/{arm64,intel}/...) must match the enclosure URLs that
           # build-appcast.sh emits, or the client's downloads would 404.
-          arm_short_version="$(jq -r '.sources.macos.arm64.appcast.shortVersionString' release-manifest.json)"
-          x64_short_version="$(jq -r '.sources.macos.x64.appcast.shortVersionString' release-manifest.json)"
-          mac_arm64_zip="artifacts/codex-macos/Codex-darwin-arm64-${arm_short_version}.zip"
-          mac_intel_zip="artifacts/codex-macos/Codex-darwin-x64-${x64_short_version}.zip"
-          arm_zip_key="latest/mac/arm64/Codex-darwin-arm64-${arm_short_version}.zip"
-          intel_zip_key="latest/mac/intel/Codex-darwin-x64-${x64_short_version}.zip"
+          arm_zip_basename="$(jq -r '.sources.macos.arm64.appcast.mirrorEnclosureBasename // empty' release-manifest.json)"
+          x64_zip_basename="$(jq -r '.sources.macos.x64.appcast.mirrorEnclosureBasename // empty' release-manifest.json)"
+          test -n "$arm_zip_basename"
+          test -n "$x64_zip_basename"
+          mac_arm64_zip="artifacts/codex-macos/${arm_zip_basename}"
+          mac_intel_zip="artifacts/codex-macos/${x64_zip_basename}"
+          arm_zip_key="latest/mac/arm64/${arm_zip_basename}"
+          intel_zip_key="latest/mac/intel/${x64_zip_basename}"
 
           test -f "$mac_arm64_zip"
           test -f "$mac_intel_zip"

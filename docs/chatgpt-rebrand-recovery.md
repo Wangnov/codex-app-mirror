@@ -41,14 +41,16 @@ Sparkle EdDSA 公钥（全通道同一把，与合并前一致）：`mNfr1v9t63B
 - delta 保留官方 basename，由 manifest 显式记录（延续现有 `deltas[].basename` / `attributes` 捕获）。
 - EdDSA 只签字节，不签 URL / 文件名；镜像 ABI 改名是独立产品决策，不与本修复捆绑。
 
-## 契约 3：shared `latest` 原子切换 + 验证前置
+## 契约 3：shared `latest` 受控协调切换 + 验证前置
 
-- `latest/manifest` + `latest/checksums` + `latest/win-*` + macOS appcast 是**一致性单元**，不拆开切换。
+- `latest/manifest` + `latest/checksums` + `latest/win-*` + macOS appcast 是**一致性单元**，不允许按平台提前拆开切换。
+- R2/S3 不提供多对象事务，而现有客户端会直接读取多个 mutable key；因此本契约不声称这些 key 能严格原子替换。把 manifest 最后上传只能缩短不一致窗口，不能创造原子性。
 - 顺序：
   1. 上传不可变对象 + versioned release / 候选 manifest，不移动 shared `latest`；
   2. Manager 兼容版完成并验证：delta、full fallback、新装、运行中退出、Classic 排除、Windows `ChatGPT.exe` 生命周期；
-  3. 原子推进全部 `latest` 指针；
-  4. 回滚只回退指针；不可变资产不覆盖、不删除。
+  3. 在受控维护窗口由同一次发布作业协调推进全部 `latest` key，完成后立即从外部逐项验证；
+  4. 回滚同样协调回退 mutable key；不可变资产不覆盖、不删除。
+- 若未来要求严格原子语义，必须升级为“版本化完整快照 + 客户端只消费单一指针”的协议；不把这项架构改造塞进 Stable P0。
 - 例外通道：若为尽快恢复 Windows 用户而提前切 Windows 部分，前置条件是先用**当前已发布 Manager** 在真机完成一次"应用运行中 → 检查更新 → 关闭 → 安装 → 健康检查 → 重启"的完整验证（静态代码推断不作数）。
 - 时序事实（支撑上述验证的可行性）：本地 26.623 用户本次升级时旧进程名仍为 `Codex`，现行 graceful-close 有效；缺口从升级后的下一跳开始。
 

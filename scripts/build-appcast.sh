@@ -45,6 +45,20 @@ require() {
 require jq
 require python3
 
+validate_safe_basename() {
+  local label="$1"
+  local value="$2"
+  local extension="$3"
+
+  if [[ -z "$value" || "$value" == "null" ||
+        "$value" == *"/"* || "$value" == *\\* || "$value" == *".."* ||
+        "$value" != *".$extension" ]] ||
+     LC_ALL=C printf '%s' "$value" | grep -q '[[:cntrl:]]'; then
+    echo "Invalid $label basename: '$value'." >&2
+    return 1
+  fi
+}
+
 case "$arch" in
   arm64)
     manifest_key="arm64"
@@ -74,6 +88,7 @@ base="${base%/latest}"
 
 short_version="$(jq -r --arg a "$manifest_key" '.sources.macos[$a].appcast.shortVersionString // ""' "$manifest")"
 build_version="$(jq -r --arg a "$manifest_key" '.sources.macos[$a].appcast.version // ""' "$manifest")"
+enclosure_basename="$(jq -r --arg a "$manifest_key" '.sources.macos[$a].appcast.mirrorEnclosureBasename // ""' "$manifest")"
 enclosure_length="$(jq -r --arg a "$manifest_key" '.sources.macos[$a].appcast.enclosureLength // 0' "$manifest")"
 enclosure_signature="$(jq -r --arg a "$manifest_key" '.sources.macos[$a].appcast.enclosureSignature // ""' "$manifest")"
 minimum_system_version="$(jq -r --arg a "$manifest_key" '.sources.macos[$a].appcast.minimumSystemVersion // ""' "$manifest")"
@@ -83,10 +98,11 @@ title="$(jq -r --arg a "$manifest_key" '.sources.macos[$a].appcast.title // ""' 
 
 # These four are the bare minimum a valid, verifiable appcast item needs. Fail
 # loudly if upstream metadata is missing so a broken feed never ships silently.
-if [[ -z "$short_version" || -z "$build_version" || -z "$enclosure_signature" ]]; then
-  echo "Missing macOS $arch appcast metadata in $manifest (shortVersionString/version/enclosureSignature)." >&2
+if [[ -z "$short_version" || -z "$build_version" || -z "$enclosure_signature" || -z "$enclosure_basename" ]]; then
+  echo "Missing macOS $arch appcast metadata in $manifest (shortVersionString/version/enclosureSignature/mirrorEnclosureBasename)." >&2
   exit 1
 fi
+validate_safe_basename "macOS $arch mirror enclosure" "$enclosure_basename" zip || exit 1
 if [[ ! "$enclosure_length" =~ ^[0-9]+$ ]] || [[ "$enclosure_length" -le 0 ]]; then
   echo "Invalid macOS $arch enclosure length in $manifest: '$enclosure_length'." >&2
   exit 1
@@ -97,7 +113,7 @@ if [[ -z "$title" ]]; then
   title="$short_version"
 fi
 
-enclosure_url="$base/latest/$mirror_dir/Codex-darwin-${archive_arch}-${short_version}.zip"
+enclosure_url="$base/latest/$mirror_dir/$enclosure_basename"
 
 # Delta enclosures the official appcast advertises under <sparkle:deltas>. The
 # probe captured each one verbatim (every attribute, including the official

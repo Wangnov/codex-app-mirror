@@ -28,8 +28,12 @@ cat > "$tmp_dir/bin/dotnet" <<'DOTNET'
 set -euo pipefail
 
 if [[ "${1:-}" == "run" ]]; then
+  if [[ "${!#}" != "OpenAI.Codex" ]]; then
+    echo "store-link did not receive the exact Stable package identity: $*" >&2
+    exit 1
+  fi
   case "$*" in
-    *" arm64")
+    *" arm64 OpenAI.Codex")
       printf '%s\thttps://download.example/%s.Msix\n' \
         "${TEST_NEW_ARM64_PACKAGE:?TEST_NEW_ARM64_PACKAGE must be set}" \
         "$TEST_NEW_ARM64_PACKAGE"
