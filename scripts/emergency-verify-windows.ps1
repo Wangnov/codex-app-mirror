@@ -2,18 +2,21 @@ param(
   [Parameter(Mandatory = $true)]
   [string] $ManifestPath,
   [string] $ArtifactsDir = "dist/windows",
-  [string] $OutputPath = "dist/windows/windows-identity.json"
+  [string] $OutputPath = "dist/windows/windows-identity.json",
+  [string] $ExpectedIdentity = "OpenAI.Codex",
+  [ValidateSet("stable", "beta")]
+  [string] $Channel = "stable",
+  [string] $ExpectedExecutable = "app/ChatGPT.exe"
 )
 
 $ErrorActionPreference = "Stop"
-$expectedIdentity = "OpenAI.Codex"
 $manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
 $packages = Get-ChildItem -LiteralPath $ArtifactsDir -File |
   Where-Object { $_.Name -match '\.(Msix|msix)$' } |
   Sort-Object Name
 
 if ($packages.Count -ne 2) {
-  throw "Expected exactly two Stable MSIX packages, found $($packages.Count)."
+  throw "Expected exactly two $Channel MSIX packages, found $($packages.Count)."
 }
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -63,8 +66,8 @@ foreach ($package in $packages) {
     $identityName = $identity.Attribute('Name').Value
     $packageVersion = $identity.Attribute('Version').Value
     $processorArchitecture = $identity.Attribute('ProcessorArchitecture').Value.ToLowerInvariant()
-    if ($identityName -ne $expectedIdentity) {
-      throw "$($package.Name) identity mismatch: expected=$expectedIdentity actual=$identityName."
+    if ($identityName -ne $ExpectedIdentity) {
+      throw "$($package.Name) identity mismatch: expected=$ExpectedIdentity actual=$identityName."
     }
     if ($packageVersion -ne $expected.version) {
       throw "$($package.Name) package version mismatch: expected=$($expected.version) actual=$packageVersion."
@@ -82,6 +85,9 @@ foreach ($package in $packages) {
     $executable = $applications[0].Attribute('Executable').Value.Replace('\', '/')
     if ([string]::IsNullOrWhiteSpace($executable)) {
       throw "$($package.Name) Application@Executable is empty."
+    }
+    if (-not $executable.Equals($ExpectedExecutable, [StringComparison]::OrdinalIgnoreCase)) {
+      throw "$($package.Name) entrypoint mismatch: expected=$ExpectedExecutable actual=$executable."
     }
 
     $matchingExecutables = @($archive.Entries | Where-Object {
@@ -102,7 +108,7 @@ foreach ($package in $packages) {
       applicationId = $applicationId
       applicationExecutable = $executable
     }
-    Write-Host "$($package.Name) passed Stable identity gate: $identityName / $applicationId / $executable"
+    Write-Host "$($package.Name) passed $Channel identity gate: $identityName / $applicationId / $executable"
   } finally {
     $archive.Dispose()
   }
@@ -114,8 +120,9 @@ if (-not $architectures.Contains('x64') -or -not $architectures.Contains('arm64'
 
 $payload = [ordered]@{
   schemaVersion = 1
-  channel = 'stable'
-  expectedIdentity = $expectedIdentity
+  channel = $Channel
+  expectedIdentity = $ExpectedIdentity
+  expectedExecutable = $ExpectedExecutable
   architectures = $architectures
 }
 

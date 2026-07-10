@@ -261,46 +261,61 @@ put_replaceable_metadata() {
 
 mac_dir="$artifacts_dir/codex-macos"
 windows_dir="$artifacts_dir/codex-windows"
+has_macos="$(jq -r '(.sources.macos.arm64? != null) and (.sources.macos.x64? != null)' "$manifest_path")"
+channel="$(jq -r '.emergency.channel // "stable"' "$manifest_path")"
 win_x64="$(find "$windows_dir" -maxdepth 1 -type f \( -name '*_x64__*.Msix' -o -name '*_x64__*.msix' \) | sort | head -n 1)"
 win_arm64="$(find "$windows_dir" -maxdepth 1 -type f \( -name '*_arm64__*.Msix' -o -name '*_arm64__*.msix' \) | sort | head -n 1)"
-arm_dmg="$mac_dir/$(jq -r '.sources.macos.arm64.mirrorBasename' "$manifest_path")"
-x64_dmg="$mac_dir/$(jq -r '.sources.macos.x64.mirrorBasename' "$manifest_path")"
-arm_zip_name="$(jq -r '.sources.macos.arm64.appcast.mirrorEnclosureBasename' "$manifest_path")"
-x64_zip_name="$(jq -r '.sources.macos.x64.appcast.mirrorEnclosureBasename' "$manifest_path")"
 
 base="$candidate_prefix/latest"
 
 # Upload all bytes first. The candidate appcasts and manifest are committed last,
 # so readers never observe metadata that points to a missing immutable object.
-put_immutable "$base/mac-arm64" "$arm_dmg" application/x-apple-diskimage
-put_immutable "$base/mac-intel" "$x64_dmg" application/x-apple-diskimage
 put_immutable "$base/win" "$win_x64" application/msix
 put_immutable "$base/win-x64" "$win_x64" application/msix
 put_immutable "$base/win-arm64" "$win_arm64" application/msix
-put_immutable "$base/mac/arm64/$arm_zip_name" "$mac_dir/$arm_zip_name" application/zip
-put_immutable "$base/mac/intel/$x64_zip_name" "$mac_dir/$x64_zip_name" application/zip
 
-while IFS= read -r basename; do
-  [[ -n "$basename" ]] || continue
-  if [[ "$basename" == */* ]]; then
-    echo "Unsafe arm64 delta basename: $basename" >&2
+if [[ "$has_macos" == "true" ]]; then
+  [[ "$arm_appcast" != "-" && "$x64_appcast" != "-" ]] || {
+    echo "macOS candidate requires both appcast paths" >&2
     exit 1
-  fi
-  put_immutable "$base/mac/arm64/$basename" "$mac_dir/$basename" application/octet-stream
-done < <(jq -r '.sources.macos.arm64.appcast.deltas[]?.basename // empty' "$manifest_path")
+  }
+  arm_dmg="$mac_dir/$(jq -r '.sources.macos.arm64.mirrorBasename' "$manifest_path")"
+  x64_dmg="$mac_dir/$(jq -r '.sources.macos.x64.mirrorBasename' "$manifest_path")"
+  arm_zip_name="$(jq -r '.sources.macos.arm64.appcast.mirrorEnclosureBasename' "$manifest_path")"
+  x64_zip_name="$(jq -r '.sources.macos.x64.appcast.mirrorEnclosureBasename' "$manifest_path")"
 
-while IFS= read -r basename; do
-  [[ -n "$basename" ]] || continue
-  if [[ "$basename" == */* ]]; then
-    echo "Unsafe x64 delta basename: $basename" >&2
-    exit 1
-  fi
-  put_immutable "$base/mac/intel/$basename" "$mac_dir/$basename" application/octet-stream
-done < <(jq -r '.sources.macos.x64.appcast.deltas[]?.basename // empty' "$manifest_path")
+  put_immutable "$base/mac-arm64" "$arm_dmg" application/x-apple-diskimage
+  put_immutable "$base/mac-intel" "$x64_dmg" application/x-apple-diskimage
+  put_immutable "$base/mac/arm64/$arm_zip_name" "$mac_dir/$arm_zip_name" application/zip
+  put_immutable "$base/mac/intel/$x64_zip_name" "$mac_dir/$x64_zip_name" application/zip
+
+  while IFS= read -r basename; do
+    [[ -n "$basename" ]] || continue
+    if [[ "$basename" == */* ]]; then
+      echo "Unsafe arm64 delta basename: $basename" >&2
+      exit 1
+    fi
+    put_immutable "$base/mac/arm64/$basename" "$mac_dir/$basename" application/octet-stream
+  done < <(jq -r '.sources.macos.arm64.appcast.deltas[]?.basename // empty' "$manifest_path")
+
+  while IFS= read -r basename; do
+    [[ -n "$basename" ]] || continue
+    if [[ "$basename" == */* ]]; then
+      echo "Unsafe x64 delta basename: $basename" >&2
+      exit 1
+    fi
+    put_immutable "$base/mac/intel/$basename" "$mac_dir/$basename" application/octet-stream
+  done < <(jq -r '.sources.macos.x64.appcast.deltas[]?.basename // empty' "$manifest_path")
+fi
 
 put_replaceable_metadata "$base/checksums" "$candidate_checksums" text/plain
-put_replaceable_metadata "$base/appcast.xml" "$arm_appcast" application/xml
-put_replaceable_metadata "$base/appcast-x64.xml" "$x64_appcast" application/xml
+if [[ "$channel" == "beta" && -f "$windows_dir/windows-identity.json" ]]; then
+  put_replaceable_metadata "$base/windows-identity.json" "$windows_dir/windows-identity.json" application/json
+fi
+if [[ "$has_macos" == "true" ]]; then
+  put_replaceable_metadata "$base/appcast.xml" "$arm_appcast" application/xml
+  put_replaceable_metadata "$base/appcast-x64.xml" "$x64_appcast" application/xml
+fi
 put_replaceable_metadata "$base/manifest" "$manifest_path" application/json
 
 echo "[$backend_label] candidate snapshot complete: s3://$S3_BUCKET/$candidate_prefix/"

@@ -1,6 +1,9 @@
 param(
   [string] $OutDir = "dist",
   [string] $ManifestPath = "",
+  [string] $ProductId = "9PLM9XGG6VKS",
+  [string] $PackageIdentity = "OpenAI.Codex",
+  [switch] $RequireArm64,
   [int] $StoreLinkMaxAttempts = 12,
   [int] $StoreLinkRetryDelaySeconds = 30
 )
@@ -35,11 +38,14 @@ if ($ManifestPath) {
         if (-not $entry.packageMoniker) {
           throw "Probe manifest has downloadable Windows $($property.Name) entry without packageMoniker."
         }
+        if (-not $entry.packageMoniker.StartsWith("$PackageIdentity`_", [StringComparison]::OrdinalIgnoreCase)) {
+          throw "Probe manifest Windows $($property.Name) package does not match identity $PackageIdentity`: $($entry.packageMoniker)."
+        }
         $windowsPackages += [pscustomobject]@{
           Architecture = $property.Name
           ExpectedPackageMoniker = $entry.packageMoniker
           ExpectedContentLength = [int64] ($entry.contentLength ?? 0)
-          Required = ($property.Name -eq "x64")
+          Required = ($property.Name -eq "x64" -or $RequireArm64.IsPresent)
         }
       }
     }
@@ -78,12 +84,13 @@ function Resolve-StorePackageLink {
   for ($attempt = 1; $attempt -le $StoreLinkMaxAttempts; $attempt++) {
     Write-Host "Resolving Microsoft Store $Architecture package link (attempt $attempt/$StoreLinkMaxAttempts)"
 
-    $resolverOutput = & dotnet run --project scripts/store-link -- 9PLM9XGG6VKS $Architecture
+    $resolverOutput = & dotnet run --project scripts/store-link -- $ProductId $Architecture $PackageIdentity
     if ($LASTEXITCODE -ne 0) {
       $lastError = "Microsoft Store resolver failed with exit code $LASTEXITCODE."
     } else {
+      $expectedPrefix = "$PackageIdentity`_"
       $linkLine = $resolverOutput |
-        Where-Object { $_ -match "^OpenAI\.Codex_" } |
+        Where-Object { $_.StartsWith($expectedPrefix, [StringComparison]::OrdinalIgnoreCase) } |
         Select-Object -First 1
 
       if (-not $linkLine) {

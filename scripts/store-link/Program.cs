@@ -9,7 +9,6 @@ using System.Xml.Linq;
 
 internal static class Program
 {
-    private const string ProductPrefix = "OpenAI.Codex_";
     private const string DisplayCatalogBaseUrl = "https://displaycatalog.mp.microsoft.com/v7.0/products";
     private const string Fe3Host = "fe3.delivery.mp.microsoft.com";
     private const string Fe3Endpoint = "https://fe3.delivery.mp.microsoft.com/ClientWebService/client.asmx";
@@ -85,12 +84,19 @@ internal static class Program
     {
         if (args.Length < 1)
         {
-            Console.Error.WriteLine("Usage: StoreLink <product-id> [architecture]");
+            Console.Error.WriteLine("Usage: StoreLink <product-id> [architecture] [package-identity]");
             return 2;
         }
 
         var productId = args[0];
         var architecture = NormalizeArchitecture(args.Length > 1 ? args[1] : "x64");
+        var packageIdentity = args.Length > 2 ? args[2] : "OpenAI.Codex";
+        if (string.IsNullOrWhiteSpace(packageIdentity))
+        {
+            Console.Error.WriteLine("package-identity must not be empty.");
+            return 2;
+        }
+        var productPrefix = packageIdentity + "_";
 
         using var handler = new HttpClientHandler
         {
@@ -111,7 +117,7 @@ internal static class Program
             var syncXml = await SyncUpdatesAsync(httpClient, cookie, wuCategoryId, deviceAttributes);
             var candidates = ParsePackageCandidates(syncXml);
             var package = candidates
-                .Where(p => p.PackageMoniker.StartsWith(ProductPrefix, StringComparison.OrdinalIgnoreCase))
+                .Where(p => p.PackageMoniker.StartsWith(productPrefix, StringComparison.OrdinalIgnoreCase))
                 .Where(p => p.PackageMoniker.Contains($"_{architecture}__", StringComparison.OrdinalIgnoreCase))
                 .OrderByDescending(p => ExtractVersion(p.PackageMoniker))
                 .FirstOrDefault();

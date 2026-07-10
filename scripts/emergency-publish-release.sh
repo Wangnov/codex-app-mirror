@@ -19,24 +19,39 @@ done
 
 mac_dir="$artifacts_dir/codex-macos"
 windows_dir="$artifacts_dir/codex-windows"
+has_macos="$(jq -r '(.sources.macos.arm64? != null) and (.sources.macos.x64? != null)' "$manifest_path")"
+channel="$(jq -r '.emergency.channel // "stable"' "$manifest_path")"
 assets=(
   assets/status.png
   "$manifest_path"
   "$checksums_path"
-  "$arm_appcast"
-  "$x64_appcast"
-  "$mac_dir/SHA256SUMS-macos.txt"
   "$windows_dir/SHA256SUMS-windows.txt"
-  "$mac_dir/$(jq -r '.sources.macos.arm64.mirrorBasename' "$manifest_path")"
-  "$mac_dir/$(jq -r '.sources.macos.x64.mirrorBasename' "$manifest_path")"
-  "$mac_dir/$(jq -r '.sources.macos.arm64.appcast.mirrorEnclosureBasename' "$manifest_path")"
-  "$mac_dir/$(jq -r '.sources.macos.x64.appcast.mirrorEnclosureBasename' "$manifest_path")"
 )
 
-while IFS= read -r basename; do
-  [[ -n "$basename" ]] || continue
-  assets+=("$mac_dir/$basename")
-done < <(jq -r '.sources.macos.arm64.appcast.deltas[]?.basename // empty, .sources.macos.x64.appcast.deltas[]?.basename // empty' "$manifest_path")
+if [[ "$channel" == "beta" && -f "$windows_dir/windows-identity.json" ]]; then
+  assets+=("$windows_dir/windows-identity.json")
+fi
+
+if [[ "$has_macos" == "true" ]]; then
+  [[ "$arm_appcast" != "-" && "$x64_appcast" != "-" ]] || {
+    echo "macOS candidate requires both appcast paths" >&2
+    exit 1
+  }
+  assets+=(
+    "$arm_appcast"
+    "$x64_appcast"
+    "$mac_dir/SHA256SUMS-macos.txt"
+    "$mac_dir/$(jq -r '.sources.macos.arm64.mirrorBasename' "$manifest_path")"
+    "$mac_dir/$(jq -r '.sources.macos.x64.mirrorBasename' "$manifest_path")"
+    "$mac_dir/$(jq -r '.sources.macos.arm64.appcast.mirrorEnclosureBasename' "$manifest_path")"
+    "$mac_dir/$(jq -r '.sources.macos.x64.appcast.mirrorEnclosureBasename' "$manifest_path")"
+  )
+
+  while IFS= read -r basename; do
+    [[ -n "$basename" ]] || continue
+    assets+=("$mac_dir/$basename")
+  done < <(jq -r '.sources.macos.arm64.appcast.deltas[]?.basename // empty, .sources.macos.x64.appcast.deltas[]?.basename // empty' "$manifest_path")
+fi
 
 while IFS= read -r msix; do
   [[ -n "$msix" ]] || continue
