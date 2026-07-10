@@ -78,6 +78,10 @@ jobs:
         shell: bash
         run: scripts/test-download-windows-retry.sh
 
+      - name: Test emergency Windows identity fixture
+        shell: bash
+        run: scripts/test-emergency-verify-windows.sh
+
       - name: Test secondary S3 retry fixture
         shell: bash
         run: scripts/test-sync-secondary-s3.sh

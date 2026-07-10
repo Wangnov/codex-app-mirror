@@ -90,12 +90,18 @@ foreach ($package in $packages) {
       throw "$($package.Name) entrypoint mismatch: expected=$ExpectedExecutable actual=$executable."
     }
 
+    $encodedExecutable = (($executable -split '/') | ForEach-Object {
+      [Uri]::EscapeDataString($_)
+    }) -join '/'
     $matchingExecutables = @($archive.Entries | Where-Object {
-      $_.FullName.Replace('\', '/').Equals($executable, [StringComparison]::OrdinalIgnoreCase)
+      $archivePath = $_.FullName.Replace('\', '/')
+      $archivePath.Equals($executable, [StringComparison]::OrdinalIgnoreCase) -or
+        $archivePath.Equals($encodedExecutable, [StringComparison]::OrdinalIgnoreCase)
     })
     if ($matchingExecutables.Count -ne 1) {
       throw "$($package.Name) manifest executable '$executable' does not resolve to exactly one package entry."
     }
+    $applicationArchivePath = $matchingExecutables[0].FullName.Replace('\', '/')
 
     $sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $package.FullName).Hash.ToLowerInvariant()
     $architectures[$architecture] = [ordered]@{
@@ -107,8 +113,9 @@ foreach ($package in $packages) {
       packageFamilyName = [string]$expected.catalog.packageFamilyName
       applicationId = $applicationId
       applicationExecutable = $executable
+      applicationArchivePath = $applicationArchivePath
     }
-    Write-Host "$($package.Name) passed $Channel identity gate: $identityName / $applicationId / $executable"
+    Write-Host "$($package.Name) passed $Channel identity gate: $identityName / $applicationId / $executable -> $applicationArchivePath"
   } finally {
     $archive.Dispose()
   }
