@@ -38,7 +38,7 @@ jq \
     error("Windows Beta package version does not match the frozen input")
   elif $win[0].channel != "beta"
     or $win[0].expectedIdentity != "OpenAI.CodexBeta"
-    or $win[0].expectedExecutable != "app/ChatGPT.exe" then
+    or $win[0].expectedExecutable != "app/ChatGPT (Beta).exe" then
     error("Windows Beta identity gate metadata is incomplete")
   elif $win[0].architectures.x64.packageVersion != $expectedVersion
     or $win[0].architectures.arm64.packageVersion != $expectedVersion then
@@ -100,7 +100,7 @@ cat > release-notes.md <<EOF
 - Microsoft Store ProductId: \`9N8CJ4W95TBZ\`
 - Package identity: \`OpenAI.CodexBeta\`
 - Package version: \`$expected_version\`
-- Entrypoint: \`app/ChatGPT.exe\`
+- Entrypoint: \`app/ChatGPT (Beta).exe\`
 - Candidate manifest: $candidate_base_url/latest/manifest
 - Windows x64: $candidate_base_url/latest/win-x64
 - Windows ARM64: $candidate_base_url/latest/win-arm64
@@ -117,8 +117,8 @@ jq -e \
     and .sources.windows.packageIdentity == "OpenAI.CodexBeta"
     and .sources.windows.architectures.x64.packageIdentity == "OpenAI.CodexBeta"
     and .sources.windows.architectures.arm64.packageIdentity == "OpenAI.CodexBeta"
-    and .sources.windows.architectures.x64.applicationExecutable == "app/ChatGPT.exe"
-    and .sources.windows.architectures.arm64.applicationExecutable == "app/ChatGPT.exe"
+    and .sources.windows.architectures.x64.applicationExecutable == "app/ChatGPT (Beta).exe"
+    and .sources.windows.architectures.arm64.applicationExecutable == "app/ChatGPT (Beta).exe"
     and .derived.prerelease == true
     and .derived.publishLatest == false
     and .derived.syncLatest == false

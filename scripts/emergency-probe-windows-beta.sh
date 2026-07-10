@@ -158,6 +158,7 @@ jq -n \
     emergency: {
       contract: "issue-36-windows-beta",
       channel: "beta",
+      expectedExecutable: "app/ChatGPT (Beta).exe",
       sharedLatestAdvanced: false
     },
     derived: {

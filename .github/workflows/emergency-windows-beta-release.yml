@@ -106,7 +106,7 @@ jobs:
             -OutputPath dist/windows/windows-identity.json `
             -ExpectedIdentity "$env:BETA_PACKAGE_IDENTITY" `
             -Channel beta `
-            -ExpectedExecutable app/ChatGPT.exe
+            -ExpectedExecutable 'app/ChatGPT (Beta).exe'
 
       - uses: actions/upload-artifact@v7
         with:
