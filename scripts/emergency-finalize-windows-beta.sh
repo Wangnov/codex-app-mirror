@@ -88,13 +88,13 @@ mv "$tmp_manifest" "$manifest_path"
 
 windows_sums="$windows_dir/SHA256SUMS-windows.txt"
 [[ -f "$windows_sums" ]] || { echo "Missing Windows checksums: $windows_sums" >&2; exit 1; }
+tr -d '\r' < "$windows_sums" > SHA256SUMS.txt
 while IFS=$'\t' read -r digest file_name; do
-  grep -Fqx "$digest  $file_name" "$windows_sums" || {
+  grep -Fqx "$digest  $file_name" SHA256SUMS.txt || {
     echo "Windows checksum metadata mismatch for $file_name" >&2
     exit 1
   }
 done < <(jq -r '.architectures.x64, .architectures.arm64 | [.sha256, .fileName] | @tsv' "$windows_identity")
-cp "$windows_sums" SHA256SUMS.txt
 sha256sum "$windows_identity" | awk '{print tolower($1) "  windows-identity.json"}' >> SHA256SUMS.txt
 sha256sum "$manifest_path" | awk '{print tolower($1) "  release-manifest.json"}' >> SHA256SUMS.txt
 
