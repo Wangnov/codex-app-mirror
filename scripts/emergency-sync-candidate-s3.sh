@@ -18,6 +18,8 @@ upload_attempts="${S3_UPLOAD_ATTEMPTS:-4}"
 backend_label="${S3_BACKEND_LABEL:-S3}"
 connect_timeout="${S3_CONNECT_TIMEOUT_SECONDS:-20}"
 read_timeout="${S3_READ_TIMEOUT_SECONDS:-300}"
+verification_mode="${S3_SHA256_VERIFICATION_MODE:-metadata}"
+bootstrap_sidecars="${S3_BOOTSTRAP_SIDECARS:-false}"
 
 if [[ ! "$candidate_prefix" =~ ^releases/codex-app-[0-9A-Za-z._-]+$ ]]; then
   echo "Refusing unsafe candidate prefix: $candidate_prefix" >&2
@@ -25,6 +27,10 @@ if [[ ! "$candidate_prefix" =~ ^releases/codex-app-[0-9A-Za-z._-]+$ ]]; then
 fi
 if [[ ! "$upload_attempts" =~ ^[1-9][0-9]*$ ]]; then
   echo "S3_UPLOAD_ATTEMPTS must be a positive integer" >&2
+  exit 1
+fi
+if [[ "$verification_mode" != "metadata" && "$verification_mode" != "sidecar" ]]; then
+  echo "S3_SHA256_VERIFICATION_MODE must be metadata or sidecar" >&2
   exit 1
 fi
 
@@ -63,6 +69,79 @@ head_object() {
     --output json 2>/dev/null
 }
 
+sidecar_key() {
+  printf '%s.sha256.json' "$1"
+}
+
+sidecar_exists() {
+  head_object "$(sidecar_key "$1")" >/dev/null
+}
+
+sidecar_matches() {
+  local key="$1"
+  local expected_size="$2"
+  local expected_sha="$3"
+  local sidecar_file
+
+  sidecar_file="$(mktemp)"
+  if ! aws s3api get-object \
+    --bucket "$S3_BUCKET" \
+    --key "$(sidecar_key "$key")" \
+    "$sidecar_file" \
+    "${aws_common[@]}" \
+    >/dev/null 2>&1; then
+    rm -f "$sidecar_file"
+    return 1
+  fi
+  if jq -e \
+    --arg sha "$(lowercase "$expected_sha")" \
+    --argjson size "$expected_size" '
+      (.sha256 | ascii_downcase) == $sha and .size == $size
+    ' "$sidecar_file" >/dev/null 2>&1; then
+    rm -f "$sidecar_file"
+    return 0
+  fi
+  rm -f "$sidecar_file"
+  return 1
+}
+
+persist_sidecar() {
+  local key="$1"
+  local size="$2"
+  local sha="$3"
+  local sidecar_file attempt
+
+  [[ "$verification_mode" == "sidecar" ]] || return 0
+  sidecar_file="$(mktemp)"
+  jq -n --arg sha "$(lowercase "$sha")" --argjson size "$size" \
+    '{schemaVersion: 1, sha256: $sha, size: $size}' > "$sidecar_file"
+  for ((attempt = 1; attempt <= upload_attempts; attempt++)); do
+    if aws s3 cp "$sidecar_file" "s3://$S3_BUCKET/$(sidecar_key "$key")" \
+      "${aws_common[@]}" \
+      --content-type application/json \
+      --cache-control "public, max-age=600" \
+      --only-show-errors \
+      --no-progress && sidecar_matches "$key" "$size" "$sha"; then
+      rm -f "$sidecar_file"
+      return 0
+    fi
+    if ((attempt < upload_attempts)); then
+      sleep $((attempt * 2))
+    fi
+  done
+  rm -f "$sidecar_file"
+  return 1
+}
+
+object_size_matches() {
+  local key="$1"
+  local expected_size="$2"
+  local head_json actual_size
+  head_json="$(head_object "$key")" || return 1
+  actual_size="$(jq -r '.ContentLength // 0' <<<"$head_json")"
+  [[ "$actual_size" == "$expected_size" ]]
+}
+
 head_matches() {
   local key="$1"
   local expected_size="$2"
@@ -73,8 +152,13 @@ head_matches() {
     return 1
   fi
   actual_size="$(jq -r '.ContentLength // 0' <<<"$head_json")"
+  [[ "$actual_size" == "$expected_size" ]] || return 1
+  if [[ "$verification_mode" == "sidecar" ]]; then
+    sidecar_matches "$key" "$expected_size" "$expected_sha"
+    return
+  fi
   actual_sha="$(jq -r '.Metadata.sha256 // ""' <<<"$head_json")"
-  [[ "$actual_size" == "$expected_size" && "$(lowercase "$actual_sha")" == "$(lowercase "$expected_sha")" ]]
+  [[ "$(lowercase "$actual_sha")" == "$(lowercase "$expected_sha")" ]]
 }
 
 file_size() {
@@ -90,7 +174,7 @@ put_immutable() {
   local key="$1"
   local file="$2"
   local content_type="$3"
-  local size sha head_json existing_size existing_sha attempt
+  local size sha head_json existing_size existing_sha attempt upload_ok
 
   [[ -f "$file" ]] || { echo "Missing upload file: $file" >&2; exit 1; }
   size="$(file_size "$file")"
@@ -99,16 +183,21 @@ put_immutable() {
   if head_json="$(head_object "$key")"; then
     existing_size="$(jq -r '.ContentLength // 0' <<<"$head_json")"
     existing_sha="$(jq -r '.Metadata.sha256 // ""' <<<"$head_json")"
-    if [[ "$existing_size" == "$size" && "$(lowercase "$existing_sha")" == "$sha" ]]; then
+    if head_matches "$key" "$size" "$sha"; then
       echo "[$backend_label] immutable object already matches: s3://$S3_BUCKET/$key"
       return 0
     fi
-    echo "[$backend_label] refusing to overwrite immutable object s3://$S3_BUCKET/$key (existing=$existing_size/${existing_sha:-no-sha256}, local=$size/$sha)" >&2
-    exit 1
+    if [[ "$verification_mode" == "sidecar" && "$bootstrap_sidecars" == "true" ]] && ! sidecar_exists "$key"; then
+      echo "[$backend_label] replacing one unverified object to bootstrap its SHA-256 sidecar: s3://$S3_BUCKET/$key" >&2
+    else
+      echo "[$backend_label] refusing to overwrite immutable object s3://$S3_BUCKET/$key (existing=$existing_size/${existing_sha:-no-sha256}, local=$size/$sha, verification=$verification_mode)" >&2
+      exit 1
+    fi
   fi
 
   for ((attempt = 1; attempt <= upload_attempts; attempt++)); do
     echo "[$backend_label] upload $attempt/$upload_attempts: s3://$S3_BUCKET/$key"
+    upload_ok=false
     if aws s3 cp "$file" "s3://$S3_BUCKET/$key" \
       "${aws_common[@]}" \
       --metadata "sha256=$sha" \
@@ -116,14 +205,12 @@ put_immutable() {
       --cache-control "public, max-age=31536000, immutable" \
       --only-show-errors \
       --no-progress; then
-      if head_matches "$key" "$size" "$sha"; then
-        return 0
-      fi
-      echo "[$backend_label] post-upload HEAD mismatch for $key" >&2
-    elif head_matches "$key" "$size" "$sha"; then
-      echo "[$backend_label] upload response failed but committed object matches: $key"
+      upload_ok=true
+    fi
+    if [[ "$upload_ok" == "true" ]] && object_size_matches "$key" "$size" && persist_sidecar "$key" "$size" "$sha" && head_matches "$key" "$size" "$sha"; then
       return 0
     fi
+    echo "[$backend_label] post-upload $verification_mode verification failed for $key" >&2
 
     if ((attempt < upload_attempts)); then
       sleep $((attempt * 5))
@@ -138,7 +225,7 @@ put_replaceable_metadata() {
   local key="$1"
   local file="$2"
   local content_type="$3"
-  local size sha attempt
+  local size sha attempt upload_ok
 
   [[ -f "$file" ]] || { echo "Missing upload file: $file" >&2; exit 1; }
   size="$(file_size "$file")"
@@ -150,6 +237,7 @@ put_replaceable_metadata() {
 
   for ((attempt = 1; attempt <= upload_attempts; attempt++)); do
     echo "[$backend_label] metadata upload $attempt/$upload_attempts: s3://$S3_BUCKET/$key"
+    upload_ok=false
     if aws s3 cp "$file" "s3://$S3_BUCKET/$key" \
       "${aws_common[@]}" \
       --metadata "sha256=$sha" \
@@ -157,10 +245,9 @@ put_replaceable_metadata() {
       --cache-control "public, max-age=600" \
       --only-show-errors \
       --no-progress; then
-      if head_matches "$key" "$size" "$sha"; then
-        return 0
-      fi
-    elif head_matches "$key" "$size" "$sha"; then
+      upload_ok=true
+    fi
+    if [[ "$upload_ok" == "true" ]] && object_size_matches "$key" "$size" && persist_sidecar "$key" "$size" "$sha" && head_matches "$key" "$size" "$sha"; then
       return 0
     fi
     if ((attempt < upload_attempts)); then

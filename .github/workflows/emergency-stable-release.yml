@@ -234,6 +234,8 @@ jobs:
           S3_UPLOAD_ATTEMPTS: 4
           S3_CONNECT_TIMEOUT_SECONDS: 15
           S3_READ_TIMEOUT_SECONDS: 300
+          S3_SHA256_VERIFICATION_MODE: sidecar
+          S3_BOOTSTRAP_SIDECARS: "true"
         shell: bash
         run: |
           set -euo pipefail
