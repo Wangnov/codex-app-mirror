@@ -2,6 +2,10 @@
   <img src="./assets/status.svg" alt="Codex App Mirror — verified distribution pipeline" width="100%">
 </p>
 
+<p align="center">
+  <img src="./assets/logo.png" width="180" alt="Codex App Mirror logo">
+</p>
+
 <h1 align="center">Codex App Mirror</h1>
 
 <p align="center">
