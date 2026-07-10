@@ -1,43 +1,37 @@
 <p align="center">
-  <img src="./assets/status.svg" alt="Codex App Mirror — mirror pipeline" width="100%">
+  <img src="./assets/status.svg" alt="Codex App Mirror — verified distribution pipeline" width="100%">
+</p>
+
+<h1 align="center">Codex App Mirror</h1>
+
+<p align="center">
+  <strong>OpenAI Codex 桌面产品（现以 ChatGPT Desktop 品牌分发）的可验证第三方镜像</strong><br>
+  Verifiable third-party mirror for the OpenAI Codex desktop product, now distributed under the ChatGPT Desktop brand.
 </p>
 
 <p align="center">
-  <img src="./assets/logo.png" width="220" alt="codex-app-mirror logo">
-</p>
-
-<h1 align="center">codex-app-mirror</h1>
-
-<p align="center">
-  把官方 Codex 桌面应用安装包，原样、可校验、国内可达地镜像到 GitHub Release，<br>
-  并为 macOS 提供 Sparkle 增量自动更新源。
-</p>
-
-<p align="center">
-  <a href="https://codexapp.agentsmirror.com"><img src="https://img.shields.io/badge/website-codexapp.agentsmirror.com-7c83ff" alt="Official website"></a>
-  <a href="https://github.com/Wangnov/codex-app-mirror/releases/latest"><img src="https://img.shields.io/endpoint?url=https://codexapp.agentsmirror.com/stats/downloads.json" alt="R2 cumulative installer downloads"></a>
-  <a href="https://github.com/Wangnov/codex-app-mirror/stargazers"><img src="https://img.shields.io/github/stars/Wangnov/codex-app-mirror?logo=github&label=stars&color=f5c518" alt="GitHub stars"></a>
-  <a href="https://github.com/Wangnov/codex-app-mirror/releases/latest"><img src="https://img.shields.io/github/release-date/Wangnov/codex-app-mirror?label=updated&logo=github" alt="Latest update time"></a>
+  <a href="https://codexapp.agentsmirror.com"><img src="https://img.shields.io/badge/website-codexapp.agentsmirror.com-6366f1" alt="Website"></a>
+  <a href="https://github.com/Wangnov/codex-app-mirror/releases/latest"><img src="https://img.shields.io/github/v/release/Wangnov/codex-app-mirror?display_name=tag&sort=semver&label=latest&color=4f46e5" alt="Latest release"></a>
+  <a href="https://github.com/Wangnov/codex-app-mirror/releases/latest"><img src="https://img.shields.io/endpoint?url=https://codexapp.agentsmirror.com/stats/downloads.json" alt="Installer downloads"></a>
   <a href="https://github.com/Wangnov/codex-app-mirror/actions/workflows/mirror.yml"><img src="https://img.shields.io/github/actions/workflow/status/Wangnov/codex-app-mirror/mirror.yml?branch=main&label=mirror&logo=githubactions" alt="Mirror workflow"></a>
-  <a href="https://github.com/Wangnov/codex-app-mirror/actions/workflows/mirror.yml"><img src="https://img.shields.io/badge/probe-every%2015%20min-2ea44f" alt="Probe every 15 minutes"></a>
-  <a href="https://github.com/Wangnov/codex-app-mirror/releases/latest"><img src="https://img.shields.io/badge/macOS-Sparkle%20auto--update-brightgreen?logo=apple" alt="macOS Sparkle auto-update"></a>
-  <a href="https://apps.microsoft.com/detail/9plm9xgg6vks"><img src="https://img.shields.io/badge/Microsoft%20Store-9PLM9XGG6VKS-0078d4?logo=microsoftstore" alt="Microsoft Store ProductId 9PLM9XGG6VKS"></a>
-  <a href="https://github.com/Wangnov/codex-app-mirror/releases/latest"><img src="https://img.shields.io/badge/macOS-arm64%20%7C%20x64-000000?logo=apple" alt="macOS arm64 and x64"></a>
-  <a href="./LICENSE"><img src="https://img.shields.io/github/license/Wangnov/codex-app-mirror?color=blue" alt="MIT License"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/github/license/Wangnov/codex-app-mirror?color=2563eb" alt="MIT License"></a>
 </p>
 
 <p align="center">
-  <a href="https://codexapp.agentsmirror.com"><b>官网 · Official Website</b></a> · <a href="#readme-cn">中文</a> · <a href="#readme-en">English</a>
+  <a href="https://github.com/Wangnov/codex-app-mirror/releases/latest"><b>下载最新版</b></a> ·
+  <a href="https://codexapp.agentsmirror.com"><b>国内直连</b></a> ·
+  <a href="https://github.com/Wangnov/Codex-App-Manager"><b>Codex App Manager</b></a> ·
+  <a href="#readme-cn">中文</a> · <a href="#readme-en">English</a>
 </p>
 
 <p align="center">
-  🖥️ 不想手动下载?<b><a href="https://github.com/Wangnov/Codex-App-Manager">Codex App Manager</a></b> 是基于本镜像的桌面客户端——一键安装、增量更新、干净卸载官方 Codex。<br>
-  🖥️ Prefer one click? <b><a href="https://github.com/Wangnov/Codex-App-Manager">Codex App Manager</a></b> — the desktop client built on this mirror — installs, updates and uninstalls official Codex for you.
+  🖥️ 不想手动下载？<b><a href="https://github.com/Wangnov/Codex-App-Manager">Codex App Manager</a></b> 提供一键安装、增量更新和干净卸载。<br>
+  🖥️ Prefer one click? <b><a href="https://github.com/Wangnov/Codex-App-Manager">Codex App Manager</a></b> installs, updates, and cleanly removes the app for you.
 </p>
 
 ---
 
-<!-- ⬇ 赞助商 SPONSOR（最顶部，中英双语共享；专属注册链接/优惠码待补，现用主站占位） -->
+<!-- ⬇ 赞助商 SPONSOR（顶部，中英双语共享） -->
 <div align="center">
 <table>
   <tr>
@@ -59,146 +53,115 @@
 
 # 中文
 
-`codex-app-mirror` 是面向 OpenAI Codex 桌面应用的安装包镜像与分发项目，用于在 Microsoft Store 或官方下载不便时提供稳定且可校验的获取渠道。项目仅做镜像，不构建、不修改、不重打包 Codex：按版本探测结果将官方来源的 Windows MSIX 与 macOS DMG 原样发布到 GitHub Release，并经 CDN 短链分发。macOS 端另提供 Sparkle 增量更新 appcast，由下游 [Codex App Manager](#cn-ecosystem) 客户端消费。
+## 这是什么
 
-## 能力一览
+`codex-app-mirror` 镜像 OpenAI Codex 桌面产品的官方 Windows 与 macOS 安装包，为 Microsoft Store 或官方下载不便的用户提供稳定、可校验的下载和更新入口。项目不构建、不修改、不破解、也不重打包应用；发布资产来自 OpenAI 或 Microsoft 的官方分发源。
 
-| 能力 | 说明 |
+> [!IMPORTANT]
+> OpenAI 已将原 Codex 桌面产品并入 ChatGPT Desktop 品牌；本仓库继续按 macOS `com.openai.codex` 与 Windows `OpenAI.Codex` 的产品身份追踪这条产品线。旧 ChatGPT App 现归为 ChatGPT Classic，不在本镜像范围内。
+
+仓库继续使用 **Codex App Mirror** 这个名称，因为显示名、应用文件名和可执行文件都可能改变，而产品身份与公共下载接口需要保持稳定。当前 macOS 应用外形为 `ChatGPT.app`，并不改变它在本项目中的 Codex 产品血统。
+
+## 下载
+
+推荐使用下列稳定短链。它们始终指向各平台当前可用的最新版，并自动选择合适的下载节点。
+
+| 平台 | 推荐下载 | Release 文件 |
+|---|---|---|
+| Windows x64 | <https://codexapp.agentsmirror.com/latest/win-x64> | `OpenAI.Codex_..._x64__2p2nqsd0c76g0.Msix` |
+| Windows ARM64 | <https://codexapp.agentsmirror.com/latest/win-arm64> | `OpenAI.Codex_..._arm64__2p2nqsd0c76g0.Msix` |
+| Apple Silicon Mac | <https://codexapp.agentsmirror.com/latest/mac-arm64> | `Codex-mac-arm64.dmg` |
+| Intel Mac | <https://codexapp.agentsmirror.com/latest/mac-intel> | `Codex-mac-x64.dmg` |
+
+- [最新 GitHub Release](https://github.com/Wangnov/codex-app-mirror/releases/latest)：查看版本说明和全部资产
+- [全部历史版本](https://github.com/Wangnov/codex-app-mirror/releases)：按 release/tag 下载旧版本
+- [SHA-256 校验和](https://codexapp.agentsmirror.com/latest/checksums)：验证下载文件完整性
+- [Release Manifest](https://codexapp.agentsmirror.com/latest/manifest)：查看来源、身份与上游指纹
+- Windows x64 兼容短链：<https://codexapp.agentsmirror.com/latest/win>
+
+如果 Microsoft Store 可正常使用，仍可优先从 [官方商店页面](https://apps.microsoft.com/detail/9plm9xgg6vks)安装。
+
+## 为什么可以信任
+
+| 保证 | 实现方式 |
 |---|---|
-| 🪟 **Windows MSIX** | 直接镜像 Microsoft Store 包，x64 稳定发布，ARM64 纳入 manifest 与镜像路径 |
-| 🍎 **macOS DMG** | Apple Silicon + Intel 双架构，官方原包，零改动 |
-| 🔄 **增量自动更新** | macOS Sparkle appcast + delta 差量包，pinned EdDSA 签名字节级保真 |
-| 🌏 **国内可达** | Cloudflare R2 全球节点 + 中国大陆自动分流到 S3 副镜像，同一条短链全自动选路 |
-| ⏱️ **15 分钟探测** | Cloudflare Cron 主调度 + GitHub Actions 6 小时兜底，上游一变就发版 |
-| 🔐 **可校验** | 每个 Release 附 `SHA256SUMS.txt` 与 `release-manifest.json` 上游指纹 |
+| **官方来源** | Windows 包由 Microsoft Store metadata 解析；macOS 包与 Sparkle 归档来自 OpenAI 官方源 |
+| **字节不变** | 安装包、Sparkle 完整归档和 delta 均不重打包；镜像只改变对外下载位置 |
+| **身份门禁** | macOS 校验 `com.openai.codex`、OpenAI Team ID 与 Sparkle 公钥；Windows 锁定 ProductId 与 `OpenAI.Codex` identity |
+| **可复核** | 每个 Release 附带 `SHA256SUMS.txt` 与 `release-manifest.json` |
+| **稳定接口** | 上游现已使用 `ChatGPT-*` 动态文件名，镜像仍保留 `Codex-*` 稳定文件名和 `latest/*` 短链 |
 
-## 下载与安装
+这里的“原样镜像”指**有效载荷字节不变**，不是复制上游不断变化的文件名。文件名兼容层不会改变文件内容，也不会使 OpenAI 的原始 Sparkle EdDSA 签名失效。
 
-打开 [最新 GitHub Release](https://github.com/Wangnov/codex-app-mirror/releases/latest)，下载你的平台对应文件：
+## macOS 增量自动更新
 
-- **Windows x64**：`OpenAI.Codex_..._x64__2p2nqsd0c76g0.Msix`
-- **Windows ARM64**：`OpenAI.Codex_..._arm64__2p2nqsd0c76g0.Msix`（当官方下载 URL 已解析时发布）
-- **Apple Silicon Mac**：`Codex-mac-arm64.dmg`
-- **Intel Mac**：`Codex-mac-x64.dmg`
-
-或直接使用 CDN 短链（推荐，**自动按你的网络选最优节点**——国内走 S3 副镜像，海外走 R2，只保留当前最新版）：
-
-| 平台 | 短链 |
-|---|---|
-| Windows x64（兼容别名） | <https://codexapp.agentsmirror.com/latest/win> |
-| Windows x64 | <https://codexapp.agentsmirror.com/latest/win-x64> |
-| Windows ARM64（当前版本可用时） | <https://codexapp.agentsmirror.com/latest/win-arm64> |
-| Apple Silicon Mac | <https://codexapp.agentsmirror.com/latest/mac-arm64> |
-| Intel Mac | <https://codexapp.agentsmirror.com/latest/mac-intel> |
-| 校验和 | <https://codexapp.agentsmirror.com/latest/checksums> |
-| Release 指纹 | <https://codexapp.agentsmirror.com/latest/manifest> |
-
-需要**历史版本**时，到 [GitHub Releases](https://github.com/Wangnov/codex-app-mirror/releases) 按 release/tag 查找；短链只指向最新版。建议同时下载 `SHA256SUMS.txt` 核对文件完整性。
-
-## macOS 自动更新
-
-macOS 版除了手动下载 DMG，还支持 **Sparkle 增量自动更新**。下游的 Codex App Manager 客户端会订阅本镜像的 appcast，自动检查新版并**只下载版本间的 delta 差量包**，而不是每次重拉完整安装包：
+除了手动下载 DMG，本镜像还提供 Sparkle 更新源，供 Codex App Manager 检查新版本并优先下载版本间 delta；没有匹配 delta 时自动回退到完整归档。
 
 - Apple Silicon：<https://codexapp.agentsmirror.com/latest/appcast.xml>
 - Intel：<https://codexapp.agentsmirror.com/latest/appcast-x64.xml>
 
-镜像**逐字节复制**官方 Sparkle 归档和 OpenAI 的 EdDSA 签名，只改写 `enclosure` 的下载地址指向镜像。由于 EdDSA 签的是归档字节本身，只要镜像与官方字节级一致，**原始签名依然有效**——本镜像不会、也无法伪造签名。如果客户端没有匹配的 delta，会自动回退到完整归档。
+镜像逐字节复制官方归档及其 EdDSA 签名，只把 appcast 中的下载地址改写到镜像。签名覆盖的是归档字节，因此下载地址和镜像文件名的变化不会破坏原始签名。
+
+## 与 Codex App Manager 的关系
+
+本仓库负责“发现、验证和分发”，[Codex App Manager](https://github.com/Wangnov/Codex-App-Manager) 负责用户侧的“安装、更新和卸载”。Manager 使用这里的稳定短链、manifest 和 Sparkle appcast，因此上游展示名称改变时，用户侧不需要追踪临时 URL 或猜测文件名。
+
+➡️ 官网：[codexapp.agentsmirror.com](https://codexapp.agentsmirror.com) · Manager：[Wangnov/Codex-App-Manager](https://github.com/Wangnov/Codex-App-Manager)
 
 ## 工作原理
 
-### 探测 → 比对 → 发布
+1. **探测**：每 15 分钟读取 Microsoft Store 与 OpenAI appcast 的权威元数据。
+2. **验证**：检查产品身份、架构、版本、签名元数据和上游指纹，拒绝不属于 Codex 产品线的包。
+3. **发布**：只有上游发生真实变化时才下载资产、计算 SHA-256、生成 manifest 并创建或补全 GitHub Release。
+4. **分发**：发布资产同步到镜像存储；同一组 `latest/*` 短链按访问位置选择可用节点。
 
-每次运行先做一次轻量探测，只有上游真的变了才下载和发版：
+主调度由 Cloudflare Cron 触发，GitHub Actions 自带定时任务作为兜底。未检测到变化时流程会在轻量探测阶段结束，不重复下载或发版。
 
-- **Windows**：通过 Microsoft Store DisplayCatalog 探测 x64 / ARM64 包元数据，再用 FE3 metadata 解析可下载 MSIX moniker 和临时 Microsoft CDN URL；ARM64 若暂未解析到 URL，会以 `catalog-only` 状态记录在 manifest
-- **macOS**：对官方 DMG 与 appcast 发请求，读取 `ETag` / `Last-Modified` / `Content-Length` 与 appcast 版本字段
-- **比对**：与最新 Release 的 `release-manifest.json` 做稳定字段比较
+## 版本与文件名
 
-没有变化就在探测阶段结束，不下载、不发重复 Release。任一平台有变化，则下载所有可下载的安装包、生成校验和与 manifest、构建 Sparkle appcast，发布新的 GitHub Release。
+Release 使用 Codex 应用内部版本聚合，tag 形如 `codex-app-26.707.31428`。Windows Store 的四段 MSIX 包版本会单独记录在 Release 说明和 manifest 中；不同平台发布时间不一致时，各架构的稳定短链只在对应资产完成验证后推进。
 
-### 双层镜像 + 按地域分流
+上游当前可能出现 `ChatGPT-<version>-<arch>.dmg`、`ChatGPT-darwin-<arch>-<version>.zip` 等名称；镜像对外继续提供 `Codex-mac-*.dmg` 和 `Codex-darwin-*.zip`，以免破坏 Manager、用户脚本和历史文档。
 
-发布后，资产会同步到两套镜像，由一个 Cloudflare Worker 路由：
+## Windows 提示“已被系统管理员阻止”
 
-- **全球**：Cloudflare R2（`codexapp-r2.agentsmirror.com`）
-- **中国大陆**：S3 副镜像，通过预签名 URL 下发
+<details>
+<summary>展开排查步骤</summary>
 
-路由器读取请求的 `CF-IPCountry`，把中国大陆访客分流到 S3 副镜像，其余走 R2——**对用户透明，同一条短链全自动选路**。
+如果双击 `.Msix` 时提示“你的系统管理员已阻止此程序”，通常不是下载损坏，而是系统策略禁止从 Microsoft Store 之外安装 MSIX / AppX，或者 App Installer / AppX 部署服务被禁用。
 
-### 调度
+1. 优先尝试 [Microsoft Store 官方页面](https://apps.microsoft.com/detail/9plm9xgg6vks)。
+2. 在个人电脑上，确认系统允许安装任意来源应用，并确认 App Installer 可用。
+3. 如需查看详细错误，可在管理员终端运行：`Add-AppxPackage -Path .\OpenAI.Codex_..._x64__2p2nqsd0c76g0.Msix`。
+4. 如果设备由公司或学校管理，请联系管理员放行；本镜像不会绕过本机安装策略。
 
-- **主调度**：Cloudflare Cron Trigger，每 15 分钟触发一次 `mirror.yml`（`workflow_dispatch`）
-- **兜底**：GitHub Actions 自带 `schedule`，每 6 小时一次（`11 */6 * * *`）——防止 GitHub 计划任务被延迟或跳过时漏检
+</details>
 
-<a id="cn-ecosystem"></a>
+## 上游与公共接口
 
-### 生态：Codex App Manager
+| 用途 | 权威来源或稳定接口 |
+|---|---|
+| Windows Stable | Microsoft Store ProductId `9PLM9XGG6VKS`，package identity `OpenAI.Codex` |
+| macOS Apple Silicon | OpenAI `codex-app-prod/appcast.xml`，bundle ID `com.openai.codex` |
+| macOS Intel | OpenAI `codex-app-prod/appcast-x64.xml`，bundle ID `com.openai.codex` |
+| 最新下载 | `https://codexapp.agentsmirror.com/latest/*` 下的稳定短链 |
+| 完整历史 | [GitHub Releases](https://github.com/Wangnov/codex-app-mirror/releases) |
 
-本镜像不只是给人手动下载——它是 **Codex App Manager** 桌面客户端的更新后端。客户端在本地检测平台与能力，并消费这里的 Sparkle appcast 完成安装与增量更新。镜像保持窄而稳，把"分发与更新"这层基础设施沉淀下来。
+macOS 的具体安装包 URL 和 basename 从官方 appcast 动态读取，不再根据 `Codex` 或 `ChatGPT` 前缀猜测。Windows 下载 URL 来自 Microsoft Store metadata，并且只作为当次取包入口使用。
 
-➡️ 官网：[codexapp.agentsmirror.com](https://codexapp.agentsmirror.com) · 仓库：[Wangnov/Codex-App-Manager](https://github.com/Wangnov/Codex-App-Manager)
+## 项目边界
 
-## 版本号说明
-
-Release 以 Codex 应用内部版本聚合，而不是以 Windows Store 的四段 MSIX 包版本命名。Windows MSIX 包名里的四段版本（例如 `26.623.5175.0`）仍会记录在 release body 和 `release-manifest.json` 的平台包字段里；Codex 内部版本来自 Windows 包内的应用 `package.json`，并与 macOS `CFBundleShortVersionString` 对齐，例如 `26.623.41415`。
-
-Release tag 与标题使用内部版本：
-
-```text
-codex-app-26.623.41415
-Codex App Mirror 26.623.41415
-```
-
-当某个平台尚未发布同一内部版本时，会先创建该内部版本的 prerelease，并在 body 的“版本与发布时间”表格中把缺失平台标记为待官方发布。已发布的架构会立即推进 R2/S3 `latest/*` 短链；尚未发布该版本的架构会继续指向它自己的当前 latest。四个架构补齐后，同一个 Release 会被补全并提升为正式 latest。
-
-Windows x64 是 Windows 平台的必需包；Windows ARM64 是可选架构。如果 Microsoft Store 在探测和下载之间发生 ARM64 rollout 漂移，本轮会跳过本地 ARM64 上传，并保留上一份校验匹配的 `latest/win-arm64`；后续探测到稳定包时再补上。
-
-当前 Windows 包名形如：
-
-```text
-OpenAI.Codex_<version>_x64__2p2nqsd0c76g0.Msix
-OpenAI.Codex_<version>_arm64__2p2nqsd0c76g0.Msix
-```
-
-## Windows 提示「已被系统管理员阻止」怎么办
-
-如果双击 `.Msix` 时提示“你的系统管理员已阻止此程序。有关详细信息，请与你的系统管理员联系。”，通常不是下载文件损坏，而是当前系统策略不允许从商店外安装 MSIX / AppX 包，或者应用安装器 / AppX 部署服务被管理员禁用。
-
-可以按这个顺序排查：
-
-- 优先尝试从 [Microsoft Store 官方页面](https://apps.microsoft.com/detail/9plm9xgg6vks)安装 Codex App。
-- 如果这是你自己的电脑，确认系统允许安装任意来源应用，并确认应用安装器可用。
-- 需要看更详细错误时，可以在管理员终端里运行：`Add-AppxPackage -Path .\OpenAI.Codex_..._x64__2p2nqsd0c76g0.Msix`
-- 如果这是公司、学校或其他受组织策略管理的设备，需要联系设备管理员放行；本镜像不会也不能绕过这些本机安装策略。
-
-## 上游来源
-
-macOS DMG 使用 OpenAI Codex 桌面安装器的官方静态地址，并以官方 appcast 锁定版本：
-
-- `https://persistent.oaistatic.com/codex-app-prod/Codex.dmg`
-- `https://persistent.oaistatic.com/codex-app-prod/Codex-latest-x64.dmg`
-
-Windows MSIX 使用 Microsoft Store metadata 解析：
-
-- **DisplayCatalog**：查询 ProductId `9PLM9XGG6VKS`
-- **FE3**：获取与当前 Windows Desktop x64 条件匹配的包 metadata
-- **Microsoft CDN**：下载 FE3 返回的临时包 URL
-
-仓库内的解析器是纯 .NET 实现，不依赖 `StoreLib` 这类第三方 Store helper 包。
-
-## 这个仓库不会做什么
-
-- 不修改 Codex 安装包
+- 不修改或重打包应用安装包
 - 不破解 Microsoft Store 或 OpenAI 的授权逻辑
-- 不伪造或重新计算 Sparkle 签名（只字节级复制官方签名）
-- 不保留 Microsoft CDN 临时 URL 作为长期下载地址
-- 不保证安装包能绕过你本机的 Windows AppX / MSIX 安装策略
+- 不伪造、替换或重新计算 OpenAI 的 Sparkle 签名
+- 不把 Microsoft CDN 临时 URL 当作长期下载地址
+- 不绕过 Windows AppX / MSIX 安装策略
 - 不替代 OpenAI、Microsoft 或 Microsoft Store 的官方分发渠道
 
 ## 致谢
 
-- **[LINUX DO](https://linux.do/)** 社区——下载链路、安装体验、校验结果的讨论与反馈都汇聚于此。
-- **中国科学院高能物理研究所（IHEP）**——提供国内 S3 镜像存储，让中国大陆的下载与更新低延迟直达。
+- **[LINUX DO](https://linux.do/)** 社区——持续提供下载链路、安装体验和校验结果反馈。
+- **中国科学院高能物理研究所（IHEP）**——提供国内镜像存储支持。
 
 ## Star History
 
@@ -213,7 +176,7 @@ Windows MSIX 使用 Microsoft Store metadata 解析：
 
 ## 许可
 
-[MIT](./LICENSE)。本项目与 OpenAI、Microsoft 无隶属或背书关系。
+[MIT](./LICENSE)。本项目是第三方社区镜像，与 OpenAI、Microsoft 无隶属、授权或背书关系。
 
 ---
 
@@ -221,131 +184,115 @@ Windows MSIX 使用 Microsoft Store metadata 解析：
 
 # English
 
-`codex-app-mirror` is an installer mirror and distribution project for the OpenAI Codex desktop app, providing a stable, verifiable way to obtain it when the Microsoft Store or official downloads are inconvenient. The project only mirrors — it does not build, modify, or repackage Codex: it publishes the official Windows MSIX and macOS DMG verbatim to GitHub Releases based on version probing, and serves them over CDN short links. For macOS it also provides a Sparkle incremental-update appcast, consumed by the downstream [Codex App Manager](#en-ecosystem) client.
+## What this is
 
-## At a glance
+`codex-app-mirror` mirrors the official Windows and macOS installers for the OpenAI Codex desktop product. It provides stable, verifiable download and update endpoints when the Microsoft Store or direct upstream downloads are inconvenient. The project does not build, modify, crack, or repackage the app; every published asset originates from an official OpenAI or Microsoft distribution source.
 
-| Capability | Detail |
+> [!IMPORTANT]
+> OpenAI has merged the former Codex desktop product into the ChatGPT Desktop brand. This repository continues to follow that product lineage by its macOS identity `com.openai.codex` and Windows identity `OpenAI.Codex`. The former standalone ChatGPT App is now referred to as ChatGPT Classic and is outside this mirror's scope.
+
+The repository remains **Codex App Mirror** because display names, app bundles, and executables may change while product identity and public download contracts need to stay stable. The current macOS bundle appears as `ChatGPT.app`; that does not change the Codex product lineage managed here.
+
+## Download
+
+The stable links below always point to the latest validated build available for each platform and automatically select an appropriate delivery node.
+
+| Platform | Recommended download | Release asset |
+|---|---|---|
+| Windows x64 | <https://codexapp.agentsmirror.com/latest/win-x64> | `OpenAI.Codex_..._x64__2p2nqsd0c76g0.Msix` |
+| Windows ARM64 | <https://codexapp.agentsmirror.com/latest/win-arm64> | `OpenAI.Codex_..._arm64__2p2nqsd0c76g0.Msix` |
+| Apple Silicon Mac | <https://codexapp.agentsmirror.com/latest/mac-arm64> | `Codex-mac-arm64.dmg` |
+| Intel Mac | <https://codexapp.agentsmirror.com/latest/mac-intel> | `Codex-mac-x64.dmg` |
+
+- [Latest GitHub Release](https://github.com/Wangnov/codex-app-mirror/releases/latest): release notes and all assets
+- [Full release history](https://github.com/Wangnov/codex-app-mirror/releases): previous versions by release/tag
+- [SHA-256 checksums](https://codexapp.agentsmirror.com/latest/checksums): verify downloaded files
+- [Release manifest](https://codexapp.agentsmirror.com/latest/manifest): inspect source, identity, and upstream fingerprints
+- Windows x64 compatibility link: <https://codexapp.agentsmirror.com/latest/win>
+
+If the Microsoft Store works for you, the [official Store listing](https://apps.microsoft.com/detail/9plm9xgg6vks) remains the preferred source.
+
+## Why it is trustworthy
+
+| Guarantee | How it works |
 |---|---|
-| 🪟 **Windows MSIX** | Mirrored from the Microsoft Store package: x64 is published, ARM64 is tracked in the manifest and mirror paths |
-| 🍎 **macOS DMG** | Apple Silicon + Intel, official packages, unmodified |
-| 🔄 **Incremental auto-update** | macOS Sparkle appcast + delta enclosures, pinned EdDSA signatures kept byte-for-byte |
-| 🌏 **Reachable in China** | Cloudflare R2 globally + auto-failover to an S3 mirror for mainland China; one link, auto-routed |
-| ⏱️ **15-minute probe** | Cloudflare Cron primary + GitHub Actions 6-hour fallback; releases only when upstream changes |
-| 🔐 **Verifiable** | Every release ships `SHA256SUMS.txt` and a `release-manifest.json` of upstream fingerprints |
+| **Official sources** | Windows packages resolve from Microsoft Store metadata; macOS installers and Sparkle archives come from OpenAI's official feed |
+| **Byte-preserving** | Installers, full Sparkle archives, and deltas are never repackaged; only their delivery location changes |
+| **Identity gates** | macOS verifies `com.openai.codex`, the OpenAI Team ID, and the Sparkle key; Windows pins the ProductId and `OpenAI.Codex` identity |
+| **Auditable** | Every release includes `SHA256SUMS.txt` and `release-manifest.json` |
+| **Stable contract** | Upstream now uses dynamic `ChatGPT-*` names while the mirror preserves stable `Codex-*` names and `latest/*` endpoints |
 
-## Download & install
+“Verbatim mirror” means the **payload bytes remain unchanged**, not that every changing upstream filename is copied. The filename compatibility layer does not alter archive contents or invalidate OpenAI's original Sparkle EdDSA signatures.
 
-Open the [latest GitHub Release](https://github.com/Wangnov/codex-app-mirror/releases/latest) and grab your platform's asset:
+## macOS incremental updates
 
-- **Windows x64**: `OpenAI.Codex_..._x64__2p2nqsd0c76g0.Msix`
-- **Windows ARM64**: `OpenAI.Codex_..._arm64__2p2nqsd0c76g0.Msix` (published when the official download URL resolves)
-- **Apple Silicon Mac**: `Codex-mac-arm64.dmg`
-- **Intel Mac**: `Codex-mac-x64.dmg`
-
-Or use the CDN short links (recommended — **auto-routed to the fastest node**: mainland China via the S3 mirror, elsewhere via R2; latest version only):
-
-| Platform | Short link |
-|---|---|
-| Windows x64 (compat alias) | <https://codexapp.agentsmirror.com/latest/win> |
-| Windows x64 | <https://codexapp.agentsmirror.com/latest/win-x64> |
-| Windows ARM64 (when available for the current version) | <https://codexapp.agentsmirror.com/latest/win-arm64> |
-| Apple Silicon Mac | <https://codexapp.agentsmirror.com/latest/mac-arm64> |
-| Intel Mac | <https://codexapp.agentsmirror.com/latest/mac-intel> |
-| Checksums | <https://codexapp.agentsmirror.com/latest/checksums> |
-| Release manifest | <https://codexapp.agentsmirror.com/latest/manifest> |
-
-For **older versions**, browse [GitHub Releases](https://github.com/Wangnov/codex-app-mirror/releases) by release/tag — the short links only point at the latest. Download `SHA256SUMS.txt` too if you want to verify integrity.
-
-## macOS auto-update
-
-Beyond manual DMG downloads, macOS supports **Sparkle incremental auto-update**. The downstream Codex App Manager client subscribes to this mirror's appcast and downloads only the **delta between versions** rather than the full installer each time:
+In addition to manual DMG downloads, the mirror publishes Sparkle feeds used by Codex App Manager. Matching clients receive a version-to-version delta; clients without a suitable delta fall back to the full archive.
 
 - Apple Silicon: <https://codexapp.agentsmirror.com/latest/appcast.xml>
 - Intel: <https://codexapp.agentsmirror.com/latest/appcast-x64.xml>
 
-The mirror copies the official Sparkle archives and OpenAI's EdDSA signatures **byte-for-byte**, rewriting only the `enclosure` URL to point at the mirror. Because EdDSA signs the archive bytes themselves, the original signature stays valid as long as the mirror is byte-identical — the mirror never forges or recomputes a signature. Clients with no matching delta fall back to the full archive.
+The mirror copies official archives and EdDSA signatures byte-for-byte and only rewrites appcast download URLs. Because the signature covers archive bytes, changing the delivery URL or mirror filename does not invalidate the original signature.
+
+## How Codex App Manager fits in
+
+This repository owns discovery, verification, and distribution. [Codex App Manager](https://github.com/Wangnov/Codex-App-Manager) owns the user-facing install, update, and uninstall experience. It consumes the stable links, manifest, and Sparkle feeds here, so users do not need to track temporary URLs or guess upstream filenames after a display-name change.
+
+➡️ Website: [codexapp.agentsmirror.com](https://codexapp.agentsmirror.com) · Manager: [Wangnov/Codex-App-Manager](https://github.com/Wangnov/Codex-App-Manager)
 
 ## How it works
 
-### Probe → compare → release
+1. **Probe**: read authoritative Microsoft Store metadata and OpenAI appcasts every 15 minutes.
+2. **Verify**: validate product identity, architecture, version, signing metadata, and upstream fingerprints; reject packages outside the Codex product lineage.
+3. **Publish**: only after a real upstream change, download assets, calculate SHA-256, generate the manifest, and create or complete a GitHub Release.
+4. **Deliver**: synchronize release assets to mirror storage and route the same `latest/*` links to an available node based on visitor location.
 
-Each run starts with a lightweight probe and only downloads/releases when upstream actually changed:
+Cloudflare Cron drives the primary schedule, with GitHub Actions' own schedule as a fallback. When nothing changed, the workflow exits after the lightweight probe and does not redownload or republish assets.
 
-- **Windows**: query Microsoft Store DisplayCatalog for x64 / ARM64 package metadata, then resolve downloadable MSIX monikers + temporary Microsoft CDN URLs via FE3 metadata; ARM64 is recorded as `catalog-only` until its URL resolves
-- **macOS**: request the official DMGs and appcast, read `ETag` / `Last-Modified` / `Content-Length` and appcast version fields
-- **Compare**: diff those stable fields against the latest release's `release-manifest.json`
+## Versions and filenames
 
-No change → it stops after the probe. Any platform changes → it downloads every downloadable installer, writes checksums + manifest, builds the Sparkle appcasts, and publishes a new GitHub Release.
+Releases are grouped by the Codex app's internal version, with tags such as `codex-app-26.707.31428`. The four-part Windows Store MSIX version remains recorded separately in the release notes and manifest. When platform rollout times differ, each architecture's stable link advances only after its corresponding asset passes validation.
 
-### Two-tier mirror + geo routing
+Upstream may now use names such as `ChatGPT-<version>-<arch>.dmg` and `ChatGPT-darwin-<arch>-<version>.zip`. The mirror continues to expose `Codex-mac-*.dmg` and `Codex-darwin-*.zip` to avoid breaking Manager, user scripts, and existing documentation.
 
-After release, assets sync to two mirrors fronted by a Cloudflare Worker:
+## Windows “blocked by your system administrator”
 
-- **Global**: Cloudflare R2 (`codexapp-r2.agentsmirror.com`)
-- **Mainland China**: an S3 mirror served via presigned URLs
+<details>
+<summary>Expand troubleshooting steps</summary>
 
-The router reads `CF-IPCountry` and sends mainland-China visitors to the S3 mirror, everyone else to R2 — transparent to users, one short link, auto-routed.
+If double-clicking an `.Msix` reports that the app was blocked by your system administrator, the download is usually not damaged. Windows policy may disallow sideloaded MSIX / AppX packages, or App Installer / AppX Deployment may be disabled.
 
-### Scheduling
+1. Try the [official Microsoft Store listing](https://apps.microsoft.com/detail/9plm9xgg6vks) first.
+2. On a personal PC, confirm that apps from outside the Store are allowed and App Installer is available.
+3. For a detailed error, run from an elevated terminal: `Add-AppxPackage -Path .\OpenAI.Codex_..._x64__2p2nqsd0c76g0.Msix`.
+4. On a work- or school-managed device, ask the administrator to allow installation. This mirror does not bypass local policy.
 
-- **Primary**: a Cloudflare Cron Trigger fires `mirror.yml` (`workflow_dispatch`) every 15 minutes
-- **Fallback**: GitHub Actions' own `schedule` runs every 6 hours (`11 */6 * * *`), in case GitHub's scheduler is delayed or skipped
+</details>
 
-<a id="en-ecosystem"></a>
+## Upstream and public interfaces
 
-### Ecosystem: Codex App Manager
+| Purpose | Authoritative source or stable interface |
+|---|---|
+| Windows Stable | Microsoft Store ProductId `9PLM9XGG6VKS`, package identity `OpenAI.Codex` |
+| macOS Apple Silicon | OpenAI `codex-app-prod/appcast.xml`, bundle ID `com.openai.codex` |
+| macOS Intel | OpenAI `codex-app-prod/appcast-x64.xml`, bundle ID `com.openai.codex` |
+| Latest downloads | Stable links under `https://codexapp.agentsmirror.com/latest/*` |
+| Full history | [GitHub Releases](https://github.com/Wangnov/codex-app-mirror/releases) |
 
-This mirror isn't only for manual downloads — it's the update backend for the **Codex App Manager** desktop client, which detects platform/capabilities locally and consumes the Sparkle appcast here for install and incremental updates. The mirror stays narrow and stable, owning the "distribution + update" infrastructure layer.
+Specific macOS installer URLs and basenames are read dynamically from the official appcast instead of being guessed from a `Codex` or `ChatGPT` prefix. Windows download URLs resolve from Microsoft Store metadata and are used only as temporary ingestion endpoints.
 
-➡️ Website: [codexapp.agentsmirror.com](https://codexapp.agentsmirror.com) · Repo: [Wangnov/Codex-App-Manager](https://github.com/Wangnov/Codex-App-Manager)
+## Project boundaries
 
-## Version numbers
-
-Releases are grouped by the Codex app's internal version, not by the four-part Windows Store MSIX package version. The Windows package version from the MSIX moniker (for example `26.623.5175.0`) is still recorded in the release body and `release-manifest.json` as platform package metadata. The Codex app version is read from the Windows package's app `package.json` and aligned with macOS `CFBundleShortVersionString`, for example `26.623.41415`.
-
-Release tags and titles use the internal version:
-
-```text
-codex-app-26.623.41415
-Codex App Mirror 26.623.41415
-```
-
-If one platform has not yet published the same internal version, the mirror creates a prerelease for that internal version and marks the missing platform as waiting in the "Versions and publish times" table. Architectures that have shipped immediately advance the R2/S3 `latest/*` short links; architectures that have not shipped that version keep pointing at their own current latest package. Once all four architectures arrive, the same Release is completed and promoted to latest.
-
-Windows x64 is the required Windows package; Windows ARM64 is an optional architecture. If the Microsoft Store ARM64 rollout drifts between probe and download, that run skips the local ARM64 upload and preserves the previous checksum-matching `latest/win-arm64`; it is replaced once a stable ARM64 package is detected.
-
-## Windows "blocked by your system administrator"
-
-If double-clicking the `.Msix` shows "This app has been blocked by your system administrator", the package is usually not damaged — Windows is blocking sideloaded MSIX / AppX installation, or App Installer / AppX deployment is disabled by policy.
-
-- Prefer the official [Microsoft Store page](https://apps.microsoft.com/detail/9plm9xgg6vks) first.
-- On a personal PC, check that Windows allows apps from outside the Store and that App Installer is available.
-- For a detailed error, run from an elevated terminal: `Add-AppxPackage -Path .\OpenAI.Codex_..._x64__2p2nqsd0c76g0.Msix`
-- On managed (work/school) devices, ask the administrator to allow the install. This mirror does not and cannot bypass local install policies.
-
-## Upstream sources
-
-macOS DMGs use OpenAI's official static URLs, version-pinned via the official appcast:
-
-- `https://persistent.oaistatic.com/codex-app-prod/Codex.dmg`
-- `https://persistent.oaistatic.com/codex-app-prod/Codex-latest-x64.dmg`
-
-The Windows MSIX is resolved from Microsoft Store metadata (DisplayCatalog → FE3 → Microsoft CDN). The resolver is implemented directly in .NET and does not depend on third-party Store helpers such as `StoreLib`.
-
-## Non-goals
-
-- Does not modify Codex installer packages
+- Does not modify or repackage application installers
 - Does not bypass Microsoft Store or OpenAI authorization
-- Does not forge or recompute Sparkle signatures (official signatures are copied verbatim)
-- Does not preserve Microsoft CDN temporary URLs as permanent links
-- Does not guarantee your local Windows AppX / MSIX policy will accept the package
-- Is not a replacement for official OpenAI / Microsoft / Microsoft Store distribution
+- Does not forge, replace, or recompute OpenAI Sparkle signatures
+- Does not preserve temporary Microsoft CDN URLs as permanent links
+- Does not bypass local Windows AppX / MSIX installation policy
+- Does not replace official OpenAI, Microsoft, or Microsoft Store distribution
 
 ## Acknowledgements
 
-- **[LINUX DO](https://linux.do/)** community — the home for feedback on download availability, install results, and checksums.
-- **Institute of High Energy Physics, Chinese Academy of Sciences (IHEP)** — provides the S3 mirror storage that keeps downloads and updates fast and reachable inside mainland China.
+- **[LINUX DO](https://linux.do/)** community — continued feedback on download availability, installation, and checksums.
+- **Institute of High Energy Physics, Chinese Academy of Sciences (IHEP)** — provides mirror storage support in mainland China.
 
 ## Star History
 
@@ -360,4 +307,4 @@ The Windows MSIX is resolved from Microsoft Store metadata (DisplayCatalog → F
 
 ## License
 
-[MIT](./LICENSE). Not affiliated with or endorsed by OpenAI or Microsoft.
+[MIT](./LICENSE). This is a third-party community mirror and is not affiliated with, authorized by, or endorsed by OpenAI or Microsoft.
