@@ -94,6 +94,7 @@ jobs:
           name: codex-macos-x64-backend-input
           path: dist/macos-x64-backend-input/*
           if-no-files-found: error
+          retention-days: 1
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v7
@@ -192,6 +193,7 @@ jobs:
           name: codex-windows-arm64-backend-input
           path: dist/windows-arm64-backend-input/*
           if-no-files-found: error
+          retention-days: 1
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v7
@@ -296,9 +298,31 @@ jobs:
           ref: v0.2.0
           path: .mirror-kit
 
-      - uses: actions/download-artifact@v8
+      - name: Download macOS release artifacts
+        uses: actions/download-artifact@v8
         with:
-          path: artifacts
+          name: codex-macos
+          path: artifacts/codex-macos
+
+      - name: Download Windows release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: codex-windows
+          path: artifacts/codex-windows
+
+      - name: Download Windows ARM64 backend metadata
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: codex-windows-arm64-backend
+          path: artifacts/codex-windows-arm64-backend
+
+      - name: Download macOS Intel backend metadata
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: codex-macos-x64-backend
+          path: artifacts/codex-macos-x64-backend
 
       - name: Prepare release metadata
         id: meta
