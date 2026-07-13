@@ -152,13 +152,19 @@ jq -n \
   --argjson x64Catalog "$x64_catalog" \
   --argjson arm64Catalog "$arm64_catalog" '
   {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: $generatedAt,
     version: $version,
-    emergency: {
-      contract: "issue-36-windows-beta",
-      channel: "beta",
+    channel: "beta",
+    beta: {
+      contract: "issue-36-beta-prerelease",
       expectedExecutable: "app/ChatGPT (Beta).exe",
+      expectedWindowsPackageVersion: $version
+    },
+    publication: {
+      githubPrereleaseOnly: true,
+      githubLatestAdvanced: false,
+      objectStoragePublished: false,
       sharedLatestAdvanced: false
     },
     derived: {
@@ -212,8 +218,12 @@ jq -e \
   --arg productId "$product_id" \
   --arg identity "$package_identity" \
   --arg version "$expected_version" '
-    .emergency.channel == "beta"
-    and .emergency.sharedLatestAdvanced == false
+    .channel == "beta"
+    and .beta.contract == "issue-36-beta-prerelease"
+    and .publication.githubPrereleaseOnly == true
+    and .publication.githubLatestAdvanced == false
+    and .publication.objectStoragePublished == false
+    and .publication.sharedLatestAdvanced == false
     and .sources.windows.productId == $productId
     and .sources.windows.packageIdentity == $identity
     and .sources.windows.version == $version
@@ -223,4 +233,4 @@ jq -e \
     and (.sources.windows.architectures.arm64.packageMoniker | startswith($identity + "_"))
   ' "$output_path" >/dev/null
 
-jq '{version, channel: .emergency.channel, productId: .sources.windows.productId, packageIdentity: .sources.windows.packageIdentity, architectures: (.sources.windows.architectures | map_values({packageMoniker, contentLength, urlHost}))}' "$output_path"
+jq '{version, channel, publication, productId: .sources.windows.productId, packageIdentity: .sources.windows.packageIdentity, architectures: (.sources.windows.architectures | map_values({packageMoniker, contentLength, urlHost}))}' "$output_path"

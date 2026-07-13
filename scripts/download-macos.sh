@@ -9,6 +9,8 @@ arm_url=""
 x64_url=""
 arm_expected_size=""
 x64_expected_size=""
+arm_dmg_name="Codex-mac-arm64.dmg"
+x64_dmg_name="Codex-mac-x64.dmg"
 arm_zip_url=""
 x64_zip_url=""
 arm_zip_expected_size=""
@@ -115,6 +117,10 @@ if [[ -n "$manifest_path" ]]; then
   x64_url="$(jq -r '.sources.macos.x64.url' "$manifest_path")"
   arm_expected_size="$(jq -r '.sources.macos.arm64.contentLength' "$manifest_path")"
   x64_expected_size="$(jq -r '.sources.macos.x64.contentLength' "$manifest_path")"
+  arm_dmg_name="$(jq -r '.sources.macos.arm64.mirrorBasename // "Codex-mac-arm64.dmg"' "$manifest_path")"
+  x64_dmg_name="$(jq -r '.sources.macos.x64.mirrorBasename // "Codex-mac-x64.dmg"' "$manifest_path")"
+  validate_safe_basename "macOS arm64 mirror DMG" "$arm_dmg_name" dmg || exit 1
+  validate_safe_basename "macOS x64 mirror DMG" "$x64_dmg_name" dmg || exit 1
 
   # Sparkle source names follow upstream branding; mirror names are our stable
   # Codex ABI. Both are explicit in the probe manifest so no stage reconstructs
@@ -138,11 +144,11 @@ else
   x64_url="https://persistent.oaistatic.com/codex-app-prod/Codex-latest-x64.dmg"
 fi
 
-download_file "macOS arm64 DMG" "$arm_url" "$out_dir/Codex-mac-arm64.dmg"
-validate_size "$out_dir/Codex-mac-arm64.dmg" "$arm_expected_size"
+download_file "macOS arm64 DMG" "$arm_url" "$out_dir/$arm_dmg_name"
+validate_size "$out_dir/$arm_dmg_name" "$arm_expected_size"
 
-download_file "macOS x64 DMG" "$x64_url" "$out_dir/Codex-mac-x64.dmg"
-validate_size "$out_dir/Codex-mac-x64.dmg" "$x64_expected_size"
+download_file "macOS x64 DMG" "$x64_url" "$out_dir/$x64_dmg_name"
+validate_size "$out_dir/$x64_dmg_name" "$x64_expected_size"
 
 # Mirror the Sparkle update archives (.zip) so the appcast enclosure URLs are
 # downloadable from the mirror. The archive bytes are copied verbatim, which is
@@ -234,7 +240,7 @@ download_deltas x64
   # Always checksum both DMGs; append any mirrored Sparkle archives + deltas.
   # Built as a positional list (not an array) so it stays safe under `set -u` on
   # the macOS runner's bash 3.2, where expanding an empty array is an error.
-  set -- Codex-mac-arm64.dmg Codex-mac-x64.dmg
+  set -- "$arm_dmg_name" "$x64_dmg_name"
   if [[ -n "$arm_zip_name" && -f "$arm_zip_name" ]]; then
     set -- "$@" "$arm_zip_name"
   fi

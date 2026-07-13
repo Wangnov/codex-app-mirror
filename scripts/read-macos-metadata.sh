@@ -7,6 +7,7 @@ x64_dmg="${3:-dist/macos/Codex-mac-x64.dmg}"
 arm64_zip="${4:-}"
 x64_zip="${5:-}"
 x64_backend_input_dir="${6:-}"
+channel="${7:-stable}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 require() {
@@ -29,7 +30,18 @@ if [[ -n "$arm64_zip" || -n "$x64_zip" ]]; then
   require ditto
 fi
 
-readonly EXPECTED_BUNDLE_IDENTIFIER="com.openai.codex"
+case "$channel" in
+  stable)
+    readonly EXPECTED_BUNDLE_IDENTIFIER="com.openai.codex"
+    ;;
+  beta)
+    readonly EXPECTED_BUNDLE_IDENTIFIER="com.openai.codex.beta"
+    ;;
+  *)
+    echo "Unsupported macOS channel: $channel (expected stable or beta)" >&2
+    exit 2
+    ;;
+esac
 readonly EXPECTED_TEAM_IDENTIFIER="2DC432GLL2"
 readonly EXPECTED_SPARKLE_PUBLIC_ED_KEY="mNfr1v9t63BfgDtlw4C8lRvSY6uMggIXABDOCi3tS6k="
 readonly METADATA_TEST_MODE="${READ_MACOS_METADATA_TEST_MODE:-0}"

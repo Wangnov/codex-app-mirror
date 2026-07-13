@@ -1,6 +1,6 @@
 # ChatGPT rebrand recovery — Stable P0 implementation contract
 
-> 状态：**Stable P0 实施中**。设计讨论与完整取证见 [#37](https://github.com/Wangnov/codex-app-mirror/issues/37)；本文件是收敛后的实现契约，供实现分支 `fix/stable-p0-chatgpt-rebrand` 对照验收。Beta 通道（#36）为独立 enhancement，不在本契约范围内。
+> 状态：**Stable P0 已实施**。设计讨论与完整取证见 [#37](https://github.com/Wangnov/codex-app-mirror/issues/37)。Beta（#36）仍不进入 Stable 镜像通道；其 GitHub-only 按需发布边界见 [`beta-prerelease.md`](./beta-prerelease.md)。
 
 ## 背景（一句话）
 

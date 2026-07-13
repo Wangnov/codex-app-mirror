@@ -1,0 +1,226 @@
+name: Publish Beta GitHub prerelease
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_windows_package_version:
+        description: Exact Microsoft Store Windows Beta package version
+        required: true
+        type: string
+      expected_macos_version:
+        description: Exact version present in both official macOS Beta appcasts
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  BETA_PRODUCT_ID: 9N8CJ4W95TBZ
+  BETA_PACKAGE_IDENTITY: OpenAI.CodexBeta
+
+# Serialize with Stable publication so the before/after GitHub Latest assertion
+# cannot race a legitimate Stable release. This workflow never writes object
+# storage or any latest/* route.
+concurrency:
+  group: codex-app-mirror
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    name: Freeze Beta source snapshot
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Probe exact Microsoft Store Beta packages
+        env:
+          EXPECTED_WINDOWS_PACKAGE_VERSION: ${{ inputs.expected_windows_package_version }}
+        run: bash scripts/emergency-probe-windows-beta.sh probe-manifest.json
+
+      - name: Add exact official macOS Beta packages
+        env:
+          EXPECTED_MACOS_VERSION: ${{ inputs.expected_macos_version }}
+        run: bash scripts/probe-macos-beta.sh probe-manifest.json
+
+      - name: Snapshot GitHub Latest before Beta publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name > github-latest-before.txt
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: beta-probe
+          path: |
+            probe-manifest.json
+            github-latest-before.txt
+          if-no-files-found: error
+          retention-days: 3
+
+  windows:
+    name: Download and verify Windows Beta
+    needs: probe
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: beta-probe
+          path: .
+
+      - name: Download exact probed Beta MSIX packages
+        shell: pwsh
+        run: |
+          ./scripts/download-windows.ps1 `
+            -OutDir dist/windows `
+            -ManifestPath probe-manifest.json `
+            -ProductId "$env:BETA_PRODUCT_ID" `
+            -PackageIdentity "$env:BETA_PACKAGE_IDENTITY" `
+            -RequireArm64
+
+      - name: Enforce Beta identity and ChatGPT entrypoint
+        shell: pwsh
+        run: |
+          ./scripts/emergency-verify-windows.ps1 `
+            -ManifestPath probe-manifest.json `
+            -ArtifactsDir dist/windows `
+            -OutputPath dist/windows/windows-identity.json `
+            -ExpectedIdentity "$env:BETA_PACKAGE_IDENTITY" `
+            -Channel beta `
+            -ExpectedExecutable 'app/ChatGPT (Beta).exe'
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: codex-windows
+          path: dist/windows/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
+
+  macos:
+    name: Download and verify macOS Beta
+    needs: probe
+    runs-on: macos-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: beta-probe
+          path: .
+
+      - name: Download exact Beta DMGs and Sparkle archives
+        shell: bash
+        run: bash scripts/download-macos.sh dist/macos probe-manifest.json
+
+      - name: Enforce Beta bundle, signing team, and Sparkle identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          arm_dmg="dist/macos/$(jq -r '.sources.macos.arm64.mirrorBasename' probe-manifest.json)"
+          x64_dmg="dist/macos/$(jq -r '.sources.macos.x64.mirrorBasename' probe-manifest.json)"
+          arm_zip="dist/macos/$(jq -r '.sources.macos.arm64.appcast.mirrorEnclosureBasename' probe-manifest.json)"
+          x64_zip="dist/macos/$(jq -r '.sources.macos.x64.appcast.mirrorEnclosureBasename' probe-manifest.json)"
+          bash scripts/read-macos-metadata.sh \
+            dist/macos/macos-identity.json \
+            "$arm_dmg" \
+            "$x64_dmg" \
+            "$arm_zip" \
+            "$x64_zip" \
+            "" \
+            beta
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: codex-macos
+          path: dist/macos/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
+
+  release:
+    name: Publish GitHub-only Beta prerelease
+    needs:
+      - probe
+      - windows
+      - macos
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: Finalize immutable Beta prerelease contract
+        env:
+          RELEASE_TAG: codex-app-beta-win-${{ inputs.expected_windows_package_version }}-mac-${{ inputs.expected_macos_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp artifacts/beta-probe/probe-manifest.json release-manifest.json
+          bash scripts/emergency-finalize-windows-beta.sh \
+            release-manifest.json \
+            artifacts/codex-windows/windows-identity.json \
+            artifacts/codex-macos/macos-identity.json \
+            artifacts \
+            "${{ inputs.expected_windows_package_version }}" \
+            "${{ inputs.expected_macos_version }}" \
+            "$RELEASE_TAG"
+
+      - name: Publish GitHub prerelease without moving GitHub Latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: codex-app-beta-win-${{ inputs.expected_windows_package_version }}-mac-${{ inputs.expected_macos_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/emergency-publish-release.sh \
+            "$RELEASE_TAG" \
+            "Codex App Mirror Beta — Windows ${{ inputs.expected_windows_package_version }}, macOS ${{ inputs.expected_macos_version }}" \
+            release-notes.md \
+            release-manifest.json \
+            SHA256SUMS.txt \
+            artifacts
+
+      - name: Verify prerelease and prove GitHub Latest was untouched
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: codex-app-beta-win-${{ inputs.expected_windows_package_version }}-mac-${{ inputs.expected_macos_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name > github-latest-after.txt
+          cmp artifacts/beta-probe/github-latest-before.txt github-latest-after.txt
+          gh release view "$RELEASE_TAG" --json isDraft,isPrerelease,tagName,assets \
+            --jq 'select(.isDraft == false and .isPrerelease == true and (.assets | length) >= 12)'
+
+      - name: Write publication summary
+        shell: bash
+        run: |
+          tag="codex-app-beta-win-${{ inputs.expected_windows_package_version }}-mac-${{ inputs.expected_macos_version }}"
+          {
+            echo "## Beta GitHub prerelease published"
+            echo
+            echo "- GitHub prerelease: https://github.com/${{ github.repository }}/releases/tag/$tag"
+            echo "- Windows version: ${{ inputs.expected_windows_package_version }}"
+            echo "- macOS version: ${{ inputs.expected_macos_version }}"
+            echo "- GitHub Latest advanced: no"
+            echo "- R2/S3 publication: disabled"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -122,6 +122,22 @@ test ! -e "$output_dir/ChatGPT-darwin-x64-1.2.3.zip"
 grep -F 'Codex-darwin-arm64-1.2.3.zip' "$output_dir/SHA256SUMS-macos.txt"
 grep -F 'ChatGPT5-4-arm64.delta' "$output_dir/SHA256SUMS-macos.txt"
 
+jq '
+  .sources.macos.arm64.mirrorBasename = "ChatGPT-Beta-mac-arm64.dmg"
+  | .sources.macos.x64.mirrorBasename = "ChatGPT-Beta-mac-x64.dmg"
+' "$tmp_dir/manifest.json" > "$tmp_dir/beta-manifest.json"
+
+beta_output_dir="$tmp_dir/beta-output"
+PATH="$tmp_dir/bin:$PATH" TEST_SOURCE_DIR="$tmp_dir/source" \
+  bash "$repo_root/scripts/download-macos.sh" "$beta_output_dir" "$tmp_dir/beta-manifest.json"
+
+test -f "$beta_output_dir/ChatGPT-Beta-mac-arm64.dmg"
+test -f "$beta_output_dir/ChatGPT-Beta-mac-x64.dmg"
+test ! -e "$beta_output_dir/Codex-mac-arm64.dmg"
+test ! -e "$beta_output_dir/Codex-mac-x64.dmg"
+grep -F 'ChatGPT-Beta-mac-arm64.dmg' "$beta_output_dir/SHA256SUMS-macos.txt"
+grep -F 'ChatGPT-Beta-mac-x64.dmg' "$beta_output_dir/SHA256SUMS-macos.txt"
+
 jq '.sources.macos.arm64.appcast.mirrorEnclosureBasename = "../escape.zip"' \
   "$tmp_dir/manifest.json" > "$tmp_dir/unsafe.json"
 set +e

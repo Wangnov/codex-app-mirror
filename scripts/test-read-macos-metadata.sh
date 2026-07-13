@@ -9,6 +9,7 @@ cleanup() {
 trap cleanup EXIT
 
 readonly expected_bundle_identifier="com.openai.codex"
+readonly expected_beta_bundle_identifier="com.openai.codex.beta"
 readonly expected_team_identifier="2DC432GLL2"
 readonly expected_sparkle_public_ed_key="mNfr1v9t63BfgDtlw4C8lRvSY6uMggIXABDOCi3tS6k="
 
@@ -149,6 +150,18 @@ add_app codex-zip Codex.app Codex Codex "$expected_bundle_identifier" "$expected
 make_volume chatgpt-zip
 add_app chatgpt-zip ChatGPT.app ChatGPT ChatGPT "$expected_bundle_identifier" "$expected_sparkle_public_ed_key" "$expected_team_identifier" 26.707.31428 5060
 
+make_volume beta-arm64
+add_app beta-arm64 "ChatGPT (Beta).app" "ChatGPT (Beta)" "ChatGPT (Beta)" "$expected_beta_bundle_identifier" "$expected_sparkle_public_ed_key" "$expected_team_identifier" 26.707.31428 5061
+
+make_volume beta-x64
+add_app beta-x64 "ChatGPT (Beta).app" "ChatGPT (Beta)" "ChatGPT (Beta)" "$expected_beta_bundle_identifier" "$expected_sparkle_public_ed_key" "$expected_team_identifier" 26.707.31428 5061
+
+make_volume beta-arm64-zip
+add_app beta-arm64-zip "ChatGPT (Beta).app" "ChatGPT (Beta)" "ChatGPT (Beta)" "$expected_beta_bundle_identifier" "$expected_sparkle_public_ed_key" "$expected_team_identifier" 26.707.31428 5061
+
+make_volume beta-x64-zip
+add_app beta-x64-zip "ChatGPT (Beta).app" "ChatGPT (Beta)" "ChatGPT (Beta)" "$expected_beta_bundle_identifier" "$expected_sparkle_public_ed_key" "$expected_team_identifier" 26.707.31428 5061
+
 make_volume classic
 add_app classic ChatGPT.app ChatGPT ChatGPT com.openai.chat "$expected_sparkle_public_ed_key"
 
@@ -173,6 +186,8 @@ rm "$tmp_dir/volumes/missing-backend/ChatGPT.app/Contents/Resources/codex"
 printf '%s\n' "$tmp_dir/volumes/codex-zip" > "$tmp_dir/codex.zip"
 printf '%s\n' "$tmp_dir/volumes/chatgpt-zip" > "$tmp_dir/chatgpt.zip"
 printf '%s\n' "$tmp_dir/volumes/classic" > "$tmp_dir/classic.zip"
+printf '%s\n' "$tmp_dir/volumes/beta-arm64-zip" > "$tmp_dir/beta-arm64.zip"
+printf '%s\n' "$tmp_dir/volumes/beta-x64-zip" > "$tmp_dir/beta-x64.zip"
 
 run_reader() {
   env \
@@ -244,6 +259,38 @@ assert prepared["sourcePackageSha256"] == sha256(source_package_path), prepared
 assert prepared["backendFileName"] == "codex", prepared
 assert prepared["backendSha256"] == sha256(backend_path), prepared
 assert sorted(os.listdir(os.path.dirname(input_manifest_path))) == ["backend-input.json", "codex"]
+PY
+
+# The channel is an explicit closed-set argument. Hostile inherited identity
+# variables remain present through run_reader, but cannot weaken either policy.
+beta_output_json="$tmp_dir/beta-macos-metadata.json"
+run_reader \
+  "$beta_output_json" \
+  "$tmp_dir/beta-arm64.dmg" \
+  "$tmp_dir/beta-x64.dmg" \
+  "$tmp_dir/beta-arm64.zip" \
+  "$tmp_dir/beta-x64.zip" \
+  "" \
+  beta > "$tmp_dir/beta-success.log"
+
+python3 - "$beta_output_json" "$expected_sparkle_public_ed_key" <<'PY'
+import json
+import sys
+
+path, expected_key = sys.argv[1:]
+with open(path, encoding="utf-8") as handle:
+    payload = json.load(handle)
+
+for item in payload["macos"].values():
+    assert item["bundleIdentifier"] == "com.openai.codex.beta", item
+    assert item["bundleName"] == "ChatGPT (Beta)", item
+    assert item["bundleExecutable"] == "ChatGPT (Beta)", item
+    assert item["teamIdentifier"] == "2DC432GLL2", item
+    assert item["sparklePublicEdKey"] == expected_key, item
+    assert item["sparkleArchiveIdentityVerified"] is True, item
+    assert item["sparkleArchiveBundleIdentifier"] == "com.openai.codex.beta", item
+    assert item["sparkleArchiveBundleVersion"] == "5061", item
+assert payload["versionsMatch"] is True, payload
 PY
 
 backend_output_json="$tmp_dir/macos-x64-backend.json"
@@ -326,6 +373,24 @@ assert_failure multiple 'Expected exactly one top-level .app'
 assert_failure wrong-key 'Unexpected Sparkle public key'
 assert_failure wrong-team 'expected 2DC432GLL2, got WRONGTEAM'
 assert_failure invalid-signature 'Code signature verification failed'
+
+set +e
+unknown_channel_output="$(run_reader \
+  "$tmp_dir/unknown-channel-output.json" \
+  "$tmp_dir/codex.dmg" \
+  "$tmp_dir/chatgpt.dmg" \
+  "" \
+  "" \
+  "" \
+  nightly 2>&1)"
+unknown_channel_status=$?
+set -e
+if [[ "$unknown_channel_status" -eq 0 ]] ||
+   ! grep -Fq 'Unsupported macOS channel: nightly (expected stable or beta)' <<<"$unknown_channel_output"; then
+  echo "Expected an unknown macOS channel to be rejected" >&2
+  printf '%s\n' "$unknown_channel_output" >&2
+  exit 1
+fi
 
 set +e
 zip_failure_output="$(run_reader \

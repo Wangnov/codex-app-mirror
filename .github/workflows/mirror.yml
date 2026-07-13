@@ -417,11 +417,14 @@ jobs:
               windows_assets+=("$win_x64_msix")
             fi
             if [[ "$INCLUDE_WINDOWS_ARM64" == "true" ]]; then
-              win_arm64_current_local="$(jq -r '.sources.windows.architectures.arm64.currentLocalArtifact // .sources.windows.architectures.arm64.currentForCodexVersion // false' release-manifest.json)"
+              win_arm64_current_local="$(bash scripts/read-current-local-artifact.sh release-manifest.json arm64)"
               win_arm64_package="$(jq -r '.sources.windows.architectures.arm64.packageMoniker // empty' release-manifest.json)"
               if [[ "$win_arm64_current_local" == "true" ]]; then
                 win_arm64_msix="$(find artifacts/codex-windows -maxdepth 1 -type f \( -name '*_arm64__*.Msix' -o -name '*_arm64__*.msix' \) | sort | head -n 1)"
-                test -f "$win_arm64_msix"
+                if [[ -z "$win_arm64_msix" || ! -f "$win_arm64_msix" ]]; then
+                  echo "release-manifest.json marks Windows ARM64 as a current local artifact, but the MSIX is missing from artifacts/codex-windows." >&2
+                  exit 1
+                fi
                 windows_assets+=("$win_arm64_msix")
               elif [[ -n "$win_arm64_package" ]]; then
                 win_arm64_expected_sha="$(jq -r --arg name "${win_arm64_package}.Msix" '.derived.latestChecksums[$name] // empty' release-manifest.json)"
@@ -449,7 +452,10 @@ jobs:
           fi
 
           for asset in "${release_assets[@]}"; do
-            test -f "$asset"
+            if [[ ! -f "$asset" ]]; then
+              echo "Missing selected GitHub Release asset: $asset" >&2
+              exit 1
+            fi
           done
 
           edit_args=(
@@ -600,7 +606,7 @@ jobs:
           mac_intel="artifacts/codex-macos/Codex-mac-x64.dmg"
           win_x64_msix="$(find artifacts/codex-windows -maxdepth 1 -type f \( -name '*_x64__*.Msix' -o -name '*_x64__*.msix' \) | sort | head -n 1)"
           win_arm64_msix="$(find artifacts/codex-windows -maxdepth 1 -type f \( -name '*_arm64__*.Msix' -o -name '*_arm64__*.msix' \) | sort | head -n 1 || true)"
-          win_arm64_current_local="$(jq -r '.sources.windows.architectures.arm64.currentLocalArtifact // .sources.windows.architectures.arm64.currentForCodexVersion // false' release-manifest.json)"
+          win_arm64_current_local="$(bash scripts/read-current-local-artifact.sh release-manifest.json arm64)"
           win_arm64_downloadable="$(jq -r '.sources.windows.architectures.arm64.downloadable // false' release-manifest.json)"
           win_arm64_package="$(jq -r '.sources.windows.architectures.arm64.packageMoniker // empty' release-manifest.json)"
           win_arm64_app_version="$(jq -r '.sources.windows.architectures.arm64.appVersion // empty' release-manifest.json)"

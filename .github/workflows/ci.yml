@@ -62,9 +62,25 @@ jobs:
         shell: bash
         run: scripts/test-prepare-release-metadata.sh
 
+      - name: Test current-local artifact marker semantics
+        shell: bash
+        run: scripts/test-read-current-local-artifact.sh
+
       - name: Test release probe fixture
         shell: bash
         run: scripts/test-probe-release.sh
+
+      - name: Test macOS Beta probe fixture
+        shell: bash
+        run: scripts/test-probe-macos-beta.sh
+
+      - name: Test Beta prerelease-only policy
+        shell: bash
+        run: scripts/test-beta-prerelease-policy.sh
+
+      - name: Test Beta GitHub prerelease publisher fixture
+        shell: bash
+        run: scripts/test-beta-publish-release.sh
 
       - name: Test release probe preserved ARM64 fixture
         shell: bash
@@ -82,7 +98,7 @@ jobs:
         shell: bash
         run: scripts/test-download-windows-retry.sh
 
-      - name: Test emergency Windows identity fixture
+      - name: Test Beta prerelease identity and finalization fixture
         shell: bash
         run: scripts/test-emergency-verify-windows.sh
 
