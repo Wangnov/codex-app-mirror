@@ -66,6 +66,10 @@ jobs:
         shell: bash
         run: scripts/test-read-current-local-artifact.sh
 
+      - name: Test GitHub API retry and 404 handling
+        shell: bash
+        run: scripts/test-github-api.sh
+
       - name: Test release probe fixture
         shell: bash
         run: scripts/test-probe-release.sh

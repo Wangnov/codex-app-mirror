@@ -59,6 +59,18 @@ cat > "$tmp_dir/bin/gh" <<'GH'
 set -euo pipefail
 
 printf '%s\n' "$*" >> "${GH_MOCK_LOG:?}"
+if [[ "${1:-}" == "api" ]]; then
+  if [[ "${GH_MOCK_API_ERROR:-}" == "503" ]]; then
+    echo 'gh: HTTP 503' >&2
+    exit 1
+  fi
+  if [[ ! -f "${GH_MOCK_STATE:?}" ]]; then
+    echo 'gh: Not Found (HTTP 404)' >&2
+    exit 1
+  fi
+  cat "$GH_MOCK_STATE"
+  exit 0
+fi
 [[ "${1:-}" == "release" ]] || { echo "unexpected gh command: $*" >&2; exit 1; }
 operation="${2:-}"
 tag="${3:-}"
@@ -139,6 +151,8 @@ publish() {
     GH_REPO=Wangnov/codex-app-mirror \
     GH_MOCK_STATE="$tmp_dir/release-state.json" \
     GH_MOCK_LOG="$tmp_dir/gh.log" \
+    GH_MOCK_API_ERROR="${GH_MOCK_API_ERROR:-}" \
+    GITHUB_API_RETRY_DELAY_SECONDS=0 \
     GITHUB_SHA=fixture-sha \
     bash "$repo_root/scripts/emergency-publish-release.sh" \
       "$tag" \
@@ -148,6 +162,21 @@ publish() {
       "$tmp_dir/SHA256SUMS.txt" \
       "$tmp_dir/artifacts"
 }
+
+# A transient lookup failure must never be treated as proof that the release is
+# absent, even when every retry is exhausted.
+set +e
+GH_MOCK_API_ERROR=503 publish >"$tmp_dir/503.log" 2>&1
+lookup_status=$?
+set -e
+if [[ "$lookup_status" -eq 0 ]] ||
+   [[ -f "$tmp_dir/release-state.json" ]] ||
+   grep -Fq "release create $tag" "$tmp_dir/gh.log"; then
+  echo "Expected GitHub API 503 to fail closed before prerelease creation." >&2
+  cat "$tmp_dir/503.log" >&2
+  exit 1
+fi
+: > "$tmp_dir/gh.log"
 
 (
   cd "$repo_root"
