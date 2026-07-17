@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/github-api.sh"
+
 product_id="9PLM9XGG6VKS"
 package_identity="OpenAI.Codex"
 architecture="x64"
@@ -353,32 +355,6 @@ asset_size() {
   jq -r --arg name "$asset_name" '.[] | select(.name == $name) | .size' <<<"$assets_json" | head -n 1
 }
 
-github_api_json_allow_404() {
-  local err_file
-  local output
-  local status
-
-  err_file="$(mktemp)"
-  if output="$(gh api "$@" 2>"$err_file")"; then
-    rm -f "$err_file"
-    printf '%s\n' "$output"
-    return 0
-  else
-    # Capture gh's real exit status here: `$?` taken after the closing `fi` would
-    # be the if-statement's status (0 when the condition is false and there is no
-    # else), masking the failure.
-    status=$?
-  fi
-  if grep -q 'HTTP 404' "$err_file"; then
-    rm -f "$err_file"
-    return 1
-  fi
-
-  cat "$err_file" >&2
-  rm -f "$err_file"
-  return "$status"
-}
-
 latest_release_tag() {
   local release_json
   local status
@@ -391,7 +367,7 @@ latest_release_tag() {
     # condition with no else), not the helper's — capture it in the else branch.
     status=$?
   fi
-  if [[ "$status" -eq 1 ]]; then
+  if [[ "$status" -eq "$GITHUB_API_NOT_FOUND_STATUS" ]]; then
     printf ''
     return 0
   fi
@@ -401,7 +377,19 @@ latest_release_tag() {
 
 github_release_json() {
   local tag="$1"
-  gh api "repos/{owner}/{repo}/releases/tags/$tag"
+  local status
+
+  if github_release_json_allow_404 "$tag"; then
+    return 0
+  else
+    status=$?
+  fi
+  if [[ "$status" -eq "$GITHUB_API_NOT_FOUND_STATUS" ]]; then
+    echo "GitHub release '$tag' was not found." >&2
+    return 1
+  fi
+
+  return "$status"
 }
 
 release_assets_json() {

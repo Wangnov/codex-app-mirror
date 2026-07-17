@@ -244,6 +244,10 @@ url="${*: -1}"
 
 case "$url" in
   repos/\{owner\}/\{repo\}/releases/latest)
+    if [[ "${TEST_LATEST_ERROR:-}" == "503" ]]; then
+      echo 'gh: HTTP 503' >&2
+      exit 1
+    fi
     printf '{"tag_name":"%s"}\n' "${TEST_LATEST_TAG:?TEST_LATEST_TAG must be set}"
     ;;
   repos/\{owner\}/\{repo\}/releases/tags/"${TEST_LATEST_TAG}")
@@ -518,6 +522,33 @@ if ! grep -Fq 'should_release=true' <<<"$schema5_output" ||
    ! grep -Fq 'public mirror aliases or appcasts are stale; republishing' <<<"$schema5_output"; then
   echo "Expected a malformed schema-5 public manifest to fail closed and trigger repair" >&2
   printf '%s\n' "$schema5_output" >&2
+  exit 1
+fi
+
+set +e
+github_503_output="$(
+  cd "$repo_root"
+  PATH="$tmp_dir/bin:$PATH" \
+  TEST_GH_LOG="$gh_log" \
+  TEST_LATEST_TAG="$latest_tag" \
+  TEST_LATEST_MANIFEST="$tmp_dir/latest-release-manifest.json" \
+  TEST_LATEST_CHECKSUMS="$tmp_dir/latest-SHA256SUMS.txt" \
+  TEST_PUBLIC_MANIFEST="$tmp_dir/public-manifest.json" \
+  TEST_PUBLIC_APPCAST="$tmp_dir/public-appcast.xml" \
+  TEST_PUBLIC_APPCAST_X64="$tmp_dir/public-appcast-x64.xml" \
+  TEST_LATEST_ERROR=503 \
+  GITHUB_API_RETRY_DELAY_SECONDS=0 \
+  STORE_LINK_MAX_ATTEMPTS=1 \
+  MANIFEST_PATH="$tmp_dir/github-503.json" \
+    scripts/probe-release.sh 2>&1
+)"
+github_503_status=$?
+set -e
+if [[ "$github_503_status" -eq 0 ]] ||
+   grep -Fq 'should_release=true' <<<"$github_503_output" ||
+   [[ "$(grep -c 'gh: HTTP 503' <<<"$github_503_output")" -ne 3 ]]; then
+  echo "Expected a persistent GitHub API 503 to stop the release probe after retries" >&2
+  printf '%s\n' "$github_503_output" >&2
   exit 1
 fi
 

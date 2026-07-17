@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/github-api.sh"
+
 tag="${1:?release tag is required}"
 title="${2:?release title is required}"
 notes_file="${3:?release notes file is required}"
@@ -97,7 +99,8 @@ lowercase() {
   tr '[:upper:]' '[:lower:]' <<<"$1"
 }
 
-if existing_assets="$(gh release view "$tag" --json assets --jq '.assets' 2>/dev/null)"; then
+release_lookup_status=0
+if existing_assets="$(github_release_assets_json_allow_404 "$tag")"; then
   existing_names_file="$(mktemp)"
   jq -r '.[].name' <<<"$existing_assets" | sort > "$existing_names_file"
   unexpected_existing_assets="$(comm -13 "$seen_names_file" "$existing_names_file")"
@@ -156,6 +159,11 @@ if existing_assets="$(gh release view "$tag" --json assets --jq '.assets' 2>/dev
     gh release upload "$tag" "$asset"
   done
 else
+  release_lookup_status=$?
+  if [[ "$release_lookup_status" -ne "$GITHUB_API_NOT_FOUND_STATUS" ]]; then
+    echo "Unable to determine whether GitHub prerelease $tag exists; refusing to create it." >&2
+    exit "$release_lookup_status"
+  fi
   gh release create "$tag" \
     --target "${GITHUB_SHA:-main}" \
     --title "$title" \

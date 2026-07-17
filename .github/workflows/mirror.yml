@@ -368,6 +368,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          source scripts/github-api.sh
           release_assets=(
             assets/status.png
             release-manifest.json
@@ -474,7 +475,8 @@ jobs:
             create_args+=(--latest)
           fi
 
-          if existing_assets_json="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets' 2>/dev/null)"; then
+          release_lookup_status=0
+          if existing_assets_json="$(github_release_assets_json_allow_404 "$RELEASE_TAG")"; then
             desired_asset_names=()
             for asset in "${release_assets[@]}"; do
               desired_asset_names+=("$(basename "$asset")")
@@ -560,6 +562,11 @@ jobs:
               echo "Release assets were reconciled without bulk clobbering existing downloads."
             fi
           else
+            release_lookup_status=$?
+            if [[ "$release_lookup_status" -ne "$GITHUB_API_NOT_FOUND_STATUS" ]]; then
+              echo "Unable to determine whether GitHub Release $RELEASE_TAG exists; refusing to create it." >&2
+              exit "$release_lookup_status"
+            fi
             if [[ "${#required_existing_asset_names[@]}" -gt 0 ]]; then
               echo "Release $RELEASE_TAG does not exist, but release-manifest.json depends on preserved assets that can only be reused from an existing Release:" >&2
               printf '  %s\n' "${required_existing_asset_names[@]}" >&2
