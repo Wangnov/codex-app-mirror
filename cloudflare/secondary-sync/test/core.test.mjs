@@ -123,6 +123,36 @@ test("uploads a ranged multipart object to staging and commits both Windows alia
   assert.equal(s3.objects.has(item.stageKey), false);
 });
 
+test("restores the published alias when the commit copy fails", async () => {
+  const stageKey = "staging/test/instance-1/objects/win-x64";
+  const s3 = createMockS3({ failCopyFrom: (sourceKey) => sourceKey === stageKey });
+  s3.objects.set(stageKey, objectEntry("next-release"));
+  s3.objects.set("latest/win", objectEntry("published-release"));
+  globalThis.fetch = s3.fetch;
+
+  const item = { id: "win-x64", stageKey, aliasKeys: ["latest/win"] };
+
+  await assert.rejects(() => commitObjectToAliases(fixtureEnv(new Map()), item));
+
+  assert.equal(text(s3.objects.get("latest/win").bytes), "published-release");
+  assert.equal(s3.objects.has("latest/win.rollback"), false);
+});
+
+test("commits the alias and clears its rollback backup on success", async () => {
+  const stageKey = "staging/test/instance-1/objects/win-x64";
+  const s3 = createMockS3();
+  s3.objects.set(stageKey, objectEntry("next-release"));
+  s3.objects.set("latest/win", objectEntry("published-release"));
+  globalThis.fetch = s3.fetch;
+
+  const item = { id: "win-x64", stageKey, aliasKeys: ["latest/win"] };
+  const commit = await commitObjectToAliases(fixtureEnv(new Map()), item);
+
+  assert.deepEqual(commit.aliases, [{ key: "latest/win", size: 12 }]);
+  assert.equal(text(s3.objects.get("latest/win").bytes), "next-release");
+  assert.equal(s3.objects.has("latest/win.rollback"), false);
+});
+
 test("deletes stale latest aliases from the secondary mirror", async () => {
   const s3 = createMockS3();
   s3.objects.set("latest/win-arm64", objectEntry("old-arm64"));
@@ -300,10 +330,11 @@ class MockR2Bucket {
   }
 }
 
-function createMockS3() {
+function createMockS3(options = {}) {
   const objects = new Map();
   const uploads = new Map();
   let uploadCounter = 0;
+  const failCopyFrom = options.failCopyFrom || (() => false);
 
   async function fetch(input, init = {}) {
     const url = new URL(input);
@@ -380,6 +411,9 @@ function createMockS3() {
 
     if (method === "PUT" && headers.has("x-amz-copy-source")) {
       const sourceKey = parseCopySource(headers.get("x-amz-copy-source"));
+      if (failCopyFrom(sourceKey)) {
+        return new Response("<Error><Code>InternalError</Code></Error>", { status: 500 });
+      }
       const source = objects.get(sourceKey);
       if (!source) {
         return new Response("missing copy source", { status: 404 });

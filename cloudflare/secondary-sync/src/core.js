@@ -3,6 +3,7 @@ const DEFAULT_SINGLE_PUT_MAX_BYTES = 32 * 1024 * 1024;
 const DEFAULT_CACHE_CONTROL = "public, max-age=600, s-maxage=86400";
 const SHORT_CACHE_CONTROL = "public, max-age=600";
 const DEFAULT_STAGE_PREFIX = "staging/secondary-sync";
+const ALIAS_ROLLBACK_SUFFIX = ".rollback";
 const DEFAULT_PRUNE_GRACE_DAYS = 1;
 
 export class NonRetryableMirrorError extends Error {
@@ -477,17 +478,8 @@ export async function commitObjectToAliases(env, item) {
 
   const aliases = [];
   for (const aliasKey of item.aliasKeys) {
-    // IHEP 网关的服务端 COPY 在目标 key 已存在时必定返回 InternalError/502，
-    // 只有目标不存在时才成功；PUT 覆盖不受影响。先删后拷绕开该限制。
-    await s3.deleteObject(aliasKey);
-    await s3.copyObject(item.stageKey, aliasKey);
-    const verified = await s3.headObject(aliasKey);
-    if (!verified || verified.contentLength !== source.contentLength) {
-      throw new Error(
-        `Secondary alias verification failed for ${aliasKey}: expected ${source.contentLength}, got ${verified?.contentLength ?? "missing"}.`,
-      );
-    }
-    aliases.push({ key: aliasKey, size: verified.contentLength });
+    await commitOneAlias(s3, item.stageKey, aliasKey, source.contentLength);
+    aliases.push({ key: aliasKey, size: source.contentLength });
   }
 
   return {
@@ -496,6 +488,57 @@ export async function commitObjectToAliases(env, item) {
     aliases,
     size: source.contentLength,
   };
+}
+
+// IHEP 网关的服务端 COPY 只在目标 key 不存在时成功，覆盖已存在的 key 必定返回
+// InternalError/502，所以别名只能先删后拷。删除会让已发布的别名短暂消失，因此
+// 先把旧对象复制成 .rollback 备份，复制或校验失败时还原，避免一次失败的发布把
+// 线上别名留成 404。
+async function commitOneAlias(s3, stageKey, aliasKey, expectedSize) {
+  const backupKey = `${aliasKey}${ALIAS_ROLLBACK_SUFFIX}`;
+  const existing = await s3.headObject(aliasKey);
+
+  if (existing) {
+    await s3.deleteObject(backupKey);
+    await s3.copyObject(aliasKey, backupKey);
+    await s3.deleteObject(aliasKey);
+  }
+
+  try {
+    await s3.copyObject(stageKey, aliasKey);
+    const verified = await s3.headObject(aliasKey);
+    if (!verified || verified.contentLength !== expectedSize) {
+      throw new Error(
+        `Secondary alias verification failed for ${aliasKey}: expected ${expectedSize}, got ${verified?.contentLength ?? "missing"}.`,
+      );
+    }
+  } catch (error) {
+    await restoreAliasFromBackup(s3, aliasKey, backupKey);
+    throw error;
+  }
+
+  await s3.deleteObject(backupKey);
+}
+
+async function restoreAliasFromBackup(s3, aliasKey, backupKey) {
+  try {
+    if (!(await s3.headObject(backupKey))) {
+      return;
+    }
+    await s3.deleteObject(aliasKey);
+    await s3.copyObject(backupKey, aliasKey);
+    await s3.deleteObject(backupKey);
+  } catch (restoreError) {
+    // 备份留在原处，供下一次重试还原。
+    console.error(
+      JSON.stringify({
+        event: "secondary_alias_restore_failed",
+        aliasKey,
+        backupKey,
+        error: restoreError.message,
+      }),
+    );
+  }
 }
 
 export async function cleanupStageObjects(env, items) {
