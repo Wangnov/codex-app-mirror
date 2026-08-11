@@ -477,6 +477,9 @@ export async function commitObjectToAliases(env, item) {
 
   const aliases = [];
   for (const aliasKey of item.aliasKeys) {
+    // IHEP 网关的服务端 COPY 在目标 key 已存在时必定返回 InternalError/502，
+    // 只有目标不存在时才成功；PUT 覆盖不受影响。先删后拷绕开该限制。
+    await s3.deleteObject(aliasKey);
     await s3.copyObject(item.stageKey, aliasKey);
     const verified = await s3.headObject(aliasKey);
     if (!verified || verified.contentLength !== source.contentLength) {
