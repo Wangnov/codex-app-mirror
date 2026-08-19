@@ -216,10 +216,10 @@ Linux Preview 使用 OpenAI 官方 APT/RPM 仓库元数据，并固定仓库签�
 ## Star History
 
 <p align="center">
-  <a href="https://star-history.com/#Wangnov/codex-app-mirror&Date">
+  <a href="https://star-history.dera.page/#Wangnov/codex-app-mirror&Date">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Wangnov/codex-app-mirror&type=Date&theme=dark" />
-      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Wangnov/codex-app-mirror&type=Date" width="75%" />
+      <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=Wangnov/codex-app-mirror&type=Date&theme=dark" />
+      <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=Wangnov/codex-app-mirror&type=Date" width="75%" />
     </picture>
   </a>
 </p>
@@ -376,10 +376,10 @@ Linux Preview uses OpenAI's official APT/RPM repository metadata with pinned sig
 ## Star History
 
 <p align="center">
-  <a href="https://star-history.com/#Wangnov/codex-app-mirror&Date">
+  <a href="https://star-history.dera.page/#Wangnov/codex-app-mirror&Date">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Wangnov/codex-app-mirror&type=Date&theme=dark" />
-      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Wangnov/codex-app-mirror&type=Date" width="75%" />
+      <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=Wangnov/codex-app-mirror&type=Date&theme=dark" />
+      <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=Wangnov/codex-app-mirror&type=Date" width="75%" />
     </picture>
   </a>
 </p>
