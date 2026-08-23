@@ -86,6 +86,22 @@ jobs:
         shell: bash
         run: scripts/test-beta-publish-release.sh
 
+      - name: Test Linux Preview signed repository probe fixture
+        shell: bash
+        run: scripts/test-linux-preview-probe.sh
+
+      - name: Test Linux Preview identity and finalization fixture
+        shell: bash
+        run: scripts/test-linux-preview-pipeline.sh
+
+      - name: Test Linux Preview prerelease-only policy
+        shell: bash
+        run: scripts/test-linux-preview-policy.sh
+
+      - name: Test Linux Preview GitHub prerelease publisher fixture
+        shell: bash
+        run: scripts/test-linux-preview-publish-release.sh
+
       - name: Test release probe preserved ARM64 fixture
         shell: bash
         run: scripts/test-probe-release-preserved-arm64.sh

@@ -59,7 +59,7 @@
 
 # 中文
 
-`codex-app-mirror` 是面向 OpenAI Codex 桌面应用的安装包镜像与分发项目，用于在 Microsoft Store 或官方下载不便时提供稳定且可校验的获取渠道。项目仅做镜像，不构建、不修改、不重打包 Codex：按版本探测结果将官方来源的 Windows MSIX 与 macOS DMG 原样发布到 GitHub Release，并经 CDN 短链分发。macOS 端另提供 Sparkle 增量更新 appcast，由下游 [Codex App Manager](#cn-ecosystem) 客户端消费。
+`codex-app-mirror` 是面向 OpenAI Codex 桌面应用的安装包镜像与分发项目，用于在 Microsoft Store 或官方下载不便时提供稳定且可校验的获取渠道。项目仅做镜像，不构建、不修改、不重打包：Stable 通道将官方 Windows MSIX 与 macOS DMG 原样发布到 GitHub Release，并经 CDN 短链分发；Linux 版统一 ChatGPT 桌面应用（包含 Codex）在 Preview 期间只进入独立 GitHub prerelease。macOS 端另提供 Sparkle 增量更新 appcast，由下游 [Codex App Manager](#cn-ecosystem) 客户端消费。
 
 ## 能力一览
 
@@ -67,6 +67,7 @@
 |---|---|
 | 🪟 **Windows MSIX** | 直接镜像 Microsoft Store 包，x64 稳定发布，ARM64 纳入 manifest 与镜像路径 |
 | 🍎 **macOS DMG** | Apple Silicon + Intel 双架构，官方原包，零改动 |
+| 🐧 **Linux Preview** | Ubuntu / Debian 的 DEB 与 Fedora 的 RPM，x64 + ARM64；仅发布 GitHub prerelease，不进入 CDN/latest |
 | 🔄 **增量自动更新** | macOS Sparkle appcast + delta 差量包，pinned EdDSA 签名字节级保真 |
 | 🌏 **国内可达** | Cloudflare R2 全球节点 + 中国大陆自动分流到 S3 副镜像，同一条短链全自动选路 |
 | ⏱️ **15 分钟探测** | Cloudflare Cron 主调度 + GitHub Actions 6 小时兜底，上游一变就发版 |
@@ -80,6 +81,15 @@
 - **Windows ARM64**：`OpenAI.Codex_..._arm64__2p2nqsd0c76g0.Msix`（当官方下载 URL 已解析时发布）
 - **Apple Silicon Mac**：`Codex-mac-arm64.dmg`
 - **Intel Mac**：`Codex-mac-x64.dmg`
+
+### Linux Preview
+
+OpenAI 于 2026-08-11 发布了统一 ChatGPT 桌面应用的 Linux Preview，其中包含 ChatGPT、ChatGPT Work 与 Codex。Linux 包不会混入上面的 Stable Latest；请到 [GitHub Releases](https://github.com/Wangnov/codex-app-mirror/releases) 查找 `codex-app-linux-preview-<版本>` prerelease：
+
+- **Ubuntu 24.04/26.04、Debian 13**：`chatgpt_<版本>_amd64.deb` 或 `chatgpt_<版本>_arm64.deb`
+- **Fedora 43/44**：`chatgpt-<版本>-1.x86_64.rpm` 或 `chatgpt-<版本>-1.aarch64.rpm`
+
+Linux Preview 是显式隔离的第三通道：`stable | beta | linux-preview`。它按需输入精确版本，验证 OpenAI APT/RPM 仓库签名与四个包的 SHA-256 后发布；不会推进 GitHub Latest，不会上传 R2/S3，也不创建任何 `latest/linux*` 短链。官方包安装后会配置 OpenAI 自己的更新仓库，因此后续自动更新默认直接来自 OpenAI。
 
 或直接使用 CDN 短链（推荐，**自动按你的网络选最优节点**——国内走 S3 副镜像，海外走 R2，只保留当前最新版）：
 
@@ -112,6 +122,7 @@ macOS 版除了手动下载 DMG，还支持 **Sparkle 增量自动更新**。下
 
 - **Windows**：通过 Microsoft Store DisplayCatalog 探测 x64 / ARM64 包元数据，再用 FE3 metadata 解析可下载 MSIX moniker 和临时 Microsoft CDN URL；ARM64 若暂未解析到 URL，会以 `catalog-only` 状态记录在 manifest
 - **macOS**：对官方 DMG 与 appcast 发请求，读取 `ETag` / `Last-Modified` / `Content-Length` 与 appcast 版本字段
+- **Linux Preview**：使用固定公钥验证官方 APT `InRelease` 与 RPM `repomd.xml`，解析带版本的四个包 URL，并对下载结果执行包名、版本、架构、文件清单、嵌入公钥及 RPM 包签名门禁
 - **比对**：与最新 Release 的 `release-manifest.json` 做稳定字段比较
 
 没有变化就在探测阶段结束，不下载、不发重复 Release。任一平台有变化，则下载所有可下载的安装包、生成校验和与 manifest、构建 Sparkle appcast，发布新的 GitHub Release。
@@ -186,6 +197,8 @@ Windows MSIX 使用 Microsoft Store metadata 解析：
 
 仓库内的解析器是纯 .NET 实现，不依赖 `StoreLib` 这类第三方 Store helper 包。
 
+Linux Preview 使用 OpenAI 官方 APT/RPM 仓库元数据，并固定仓库签名公钥指纹 `3BFA0E4AE8B8CC16A2D9BA684A3B4A566C4660E4`。官方网页入口位于 <https://openai.com/codex/>；仓库探测结果只发布到独立 prerelease。
+
 ## 这个仓库不会做什么
 
 - 不修改 Codex 安装包
@@ -221,7 +234,7 @@ Windows MSIX 使用 Microsoft Store metadata 解析：
 
 # English
 
-`codex-app-mirror` is an installer mirror and distribution project for the OpenAI Codex desktop app, providing a stable, verifiable way to obtain it when the Microsoft Store or official downloads are inconvenient. The project only mirrors — it does not build, modify, or repackage Codex: it publishes the official Windows MSIX and macOS DMG verbatim to GitHub Releases based on version probing, and serves them over CDN short links. For macOS it also provides a Sparkle incremental-update appcast, consumed by the downstream [Codex App Manager](#en-ecosystem) client.
+`codex-app-mirror` is an installer mirror and distribution project for the OpenAI Codex desktop app, providing a stable, verifiable way to obtain it when the Microsoft Store or official downloads are inconvenient. The project only mirrors — it does not build, modify, or repackage packages. Stable publishes official Windows MSIX and macOS DMG assets verbatim to GitHub Releases and CDN short links. During preview, the unified ChatGPT Linux desktop app (including Codex) is isolated in GitHub prereleases only. For macOS the project also provides a Sparkle incremental-update appcast, consumed by the downstream [Codex App Manager](#en-ecosystem) client.
 
 ## At a glance
 
@@ -229,6 +242,7 @@ Windows MSIX 使用 Microsoft Store metadata 解析：
 |---|---|
 | 🪟 **Windows MSIX** | Mirrored from the Microsoft Store package: x64 is published, ARM64 is tracked in the manifest and mirror paths |
 | 🍎 **macOS DMG** | Apple Silicon + Intel, official packages, unmodified |
+| 🐧 **Linux Preview** | DEB for Ubuntu/Debian and RPM for Fedora, x64 + ARM64; GitHub prerelease only, never CDN/latest |
 | 🔄 **Incremental auto-update** | macOS Sparkle appcast + delta enclosures, pinned EdDSA signatures kept byte-for-byte |
 | 🌏 **Reachable in China** | Cloudflare R2 globally + auto-failover to an S3 mirror for mainland China; one link, auto-routed |
 | ⏱️ **15-minute probe** | Cloudflare Cron primary + GitHub Actions 6-hour fallback; releases only when upstream changes |
@@ -242,6 +256,15 @@ Open the [latest GitHub Release](https://github.com/Wangnov/codex-app-mirror/rel
 - **Windows ARM64**: `OpenAI.Codex_..._arm64__2p2nqsd0c76g0.Msix` (published when the official download URL resolves)
 - **Apple Silicon Mac**: `Codex-mac-arm64.dmg`
 - **Intel Mac**: `Codex-mac-x64.dmg`
+
+### Linux Preview
+
+OpenAI announced the unified ChatGPT desktop app for Linux Preview on 2026-08-11, including ChatGPT, ChatGPT Work, and Codex. Linux packages are not mixed into Stable Latest. Browse [GitHub Releases](https://github.com/Wangnov/codex-app-mirror/releases) for a `codex-app-linux-preview-<version>` prerelease:
+
+- **Ubuntu 24.04/26.04 and Debian 13**: `chatgpt_<version>_amd64.deb` or `chatgpt_<version>_arm64.deb`
+- **Fedora 43/44**: `chatgpt-<version>-1.x86_64.rpm` or `chatgpt-<version>-1.aarch64.rpm`
+
+Linux Preview is an explicitly isolated third channel: `stable | beta | linux-preview`. An on-demand run requires an exact version, verifies OpenAI's signed APT/RPM metadata and all four package checksums, and publishes without advancing GitHub Latest, writing R2/S3, or creating `latest/linux*` routes. The official packages configure OpenAI's own update repository after installation, so subsequent automatic updates come directly from OpenAI by default.
 
 Or use the CDN short links (recommended — **auto-routed to the fastest node**: mainland China via the S3 mirror, elsewhere via R2; latest version only):
 
@@ -274,6 +297,7 @@ Each run starts with a lightweight probe and only downloads/releases when upstre
 
 - **Windows**: query Microsoft Store DisplayCatalog for x64 / ARM64 package metadata, then resolve downloadable MSIX monikers + temporary Microsoft CDN URLs via FE3 metadata; ARM64 is recorded as `catalog-only` until its URL resolves
 - **macOS**: request the official DMGs and appcast, read `ETag` / `Last-Modified` / `Content-Length` and appcast version fields
+- **Linux Preview**: verify the official APT `InRelease` and RPM `repomd.xml` with a pinned key, resolve four versioned packages, then gate package name, version, architecture, file list, embedded key, and RPM package signatures
 - **Compare**: diff those stable fields against the latest release's `release-manifest.json`
 
 No change → it stops after the probe. Any platform changes → it downloads every downloadable installer, writes checksums + manifest, builds the Sparkle appcasts, and publishes a new GitHub Release.
@@ -332,6 +356,8 @@ macOS DMGs use OpenAI's official static URLs, version-pinned via the official ap
 - `https://persistent.oaistatic.com/codex-app-prod/Codex-latest-x64.dmg`
 
 The Windows MSIX is resolved from Microsoft Store metadata (DisplayCatalog → FE3 → Microsoft CDN). The resolver is implemented directly in .NET and does not depend on third-party Store helpers such as `StoreLib`.
+
+Linux Preview uses OpenAI's official APT/RPM repository metadata with pinned signing-key fingerprint `3BFA0E4AE8B8CC16A2D9BA684A3B4A566C4660E4`. The official web entry point is <https://openai.com/codex/>; repository snapshots are published only to isolated prereleases.
 
 ## Non-goals
 

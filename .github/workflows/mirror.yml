@@ -102,6 +102,7 @@ jobs:
           name: codex-macos
           path: dist/macos/*
           if-no-files-found: error
+          retention-days: 1
 
   windows:
     name: Download Windows installer
@@ -201,6 +202,7 @@ jobs:
           name: codex-windows
           path: dist/windows/*
           if-no-files-found: error
+          retention-days: 1
 
   windows_arm64_backend:
     name: Read Windows ARM64 backend metadata
@@ -250,6 +252,7 @@ jobs:
           name: codex-windows-arm64-backend
           path: dist/windows-arm64-backend/*
           if-no-files-found: error
+          retention-days: 1
 
   macos_x64_backend:
     name: Read macOS Intel backend metadata
@@ -276,6 +279,7 @@ jobs:
           name: codex-macos-x64-backend
           path: dist/macos-x64-backend/*
           if-no-files-found: error
+          retention-days: 1
   release:
     name: Publish release
     runs-on: ubuntu-latest
@@ -861,3 +865,46 @@ jobs:
           SECONDARY_SYNC_TIMEOUT_SECONDS: 2400
         shell: bash
         run: bash scripts/trigger-secondary-sync.sh
+
+  cleanup_artifacts:
+    name: Delete run artifacts
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    needs:
+      - probe
+      - macos
+      - windows
+      - windows_arm64_backend
+      - macos_x64_backend
+      - release
+      - no_changes
+    permissions:
+      actions: write
+    steps:
+      - name: Delete artifacts from this run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          artifact_ids="$(
+            gh api --paginate \
+              "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100" \
+              --jq '.artifacts[].id'
+          )"
+
+          if [[ -z "$artifact_ids" ]]; then
+            echo "No artifacts to delete for run $GITHUB_RUN_ID."
+            exit 0
+          fi
+
+          deleted=0
+          while IFS= read -r artifact_id; do
+            [[ -n "$artifact_id" ]] || continue
+            gh api --method DELETE "repos/$GH_REPO/actions/artifacts/$artifact_id"
+            ((deleted += 1))
+          done <<< "$artifact_ids"
+
+          echo "Deleted $deleted artifact(s) from run $GITHUB_RUN_ID."

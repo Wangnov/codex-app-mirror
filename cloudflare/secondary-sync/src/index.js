@@ -9,6 +9,7 @@ import {
   decoratePlanWithStage,
   discoverSourceManifest,
   handleApiRequest,
+  pruneAbandonedStageObjects,
   pruneStaleLatestMacObjects,
   reconcileSync,
   uploadObjectToStage,
@@ -46,51 +47,76 @@ export class SecondaryMirrorWorkflow extends WorkflowEntrypoint {
       this.env,
     );
 
-    const uploadResults = [];
-    for (const item of plan.items) {
-      uploadResults.push(
-        await step.do(stepName("upload", item), UPLOAD_STEP, () =>
-          nonRetryableGuard(() =>
-            uploadObjectToStage(this.env, item, {
-              forceUpload: Boolean(payload.force),
-            }),
+    const abandonedStageResult = await step.do(
+      "prune abandoned secondary staging",
+      HOUSEKEEPING_STEP,
+      () => nonRetryableGuard(() => pruneAbandonedStageObjects(this.env, plan.stagePrefix)),
+    );
+
+    try {
+      const uploadResults = [];
+      for (const item of plan.items) {
+        uploadResults.push(
+          await step.do(stepName("upload", item), UPLOAD_STEP, () =>
+            nonRetryableGuard(() =>
+              uploadObjectToStage(this.env, item, {
+                forceUpload: Boolean(payload.force),
+              }),
+            ),
           ),
-        ),
+        );
+      }
+
+      const commitResults = [];
+      for (const item of commitOrder(plan.items)) {
+        commitResults.push(
+          await step.do(stepName("commit", item), COMMIT_STEP, () =>
+            nonRetryableGuard(() => commitObjectToAliases(this.env, item)),
+          ),
+        );
+      }
+
+      const staleAliasResult = await step.do("delete stale latest aliases", HOUSEKEEPING_STEP, () =>
+        nonRetryableGuard(() => deleteStaleAliasObjects(this.env, plan.staleAliasKeys)),
       );
-    }
 
-    const commitResults = [];
-    for (const item of commitOrder(plan.items)) {
-      commitResults.push(
-        await step.do(stepName("commit", item), COMMIT_STEP, () =>
-          nonRetryableGuard(() => commitObjectToAliases(this.env, item)),
-        ),
+      const pruneResult = await step.do("prune stale Sparkle archives", HOUSEKEEPING_STEP, () =>
+        nonRetryableGuard(() => pruneStaleLatestMacObjects(this.env, plan.keepLatestMacKeys)),
       );
+
+      const cleanupResult = await step.do("cleanup secondary staging objects", HOUSEKEEPING_STEP, () =>
+        nonRetryableGuard(() => cleanupStageObjects(this.env, plan.items)),
+      );
+
+      return {
+        releaseTag: source.releaseTag,
+        manifestSha256: source.manifestSha256,
+        stagePrefix: plan.stagePrefix,
+        abandonedStageObjectsDeleted: abandonedStageResult.deleted.length,
+        abandonedMultipartUploadsAborted: abandonedStageResult.aborted.length,
+        uploaded: uploadResults.length,
+        committed: commitResults.reduce((count, result) => count + result.aliases.length, 0),
+        staleAliasesDeleted: staleAliasResult.deleted.length,
+        pruned: pruneResult.pruned.length,
+        cleaned: cleanupResult.deleted.length,
+        completedAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      try {
+        await step.do("cleanup failed secondary staging objects", HOUSEKEEPING_STEP, () =>
+          nonRetryableGuard(() => cleanupStageObjects(this.env, plan.items)),
+        );
+      } catch (cleanupError) {
+        console.error(
+          JSON.stringify({
+            event: "secondary_sync_failure_cleanup_failed",
+            stagePrefix: plan.stagePrefix,
+            error: cleanupError.message,
+          }),
+        );
+      }
+      throw error;
     }
-
-    const staleAliasResult = await step.do("delete stale latest aliases", HOUSEKEEPING_STEP, () =>
-      nonRetryableGuard(() => deleteStaleAliasObjects(this.env, plan.staleAliasKeys)),
-    );
-
-    const pruneResult = await step.do("prune stale Sparkle archives", HOUSEKEEPING_STEP, () =>
-      nonRetryableGuard(() => pruneStaleLatestMacObjects(this.env, plan.keepLatestMacKeys)),
-    );
-
-    const cleanupResult = await step.do("cleanup secondary staging objects", HOUSEKEEPING_STEP, () =>
-      nonRetryableGuard(() => cleanupStageObjects(this.env, plan.items)),
-    );
-
-    return {
-      releaseTag: source.releaseTag,
-      manifestSha256: source.manifestSha256,
-      stagePrefix: plan.stagePrefix,
-      uploaded: uploadResults.length,
-      committed: commitResults.reduce((count, result) => count + result.aliases.length, 0),
-      staleAliasesDeleted: staleAliasResult.deleted.length,
-      pruned: pruneResult.pruned.length,
-      cleaned: cleanupResult.deleted.length,
-      completedAt: new Date().toISOString(),
-    };
   }
 }
 

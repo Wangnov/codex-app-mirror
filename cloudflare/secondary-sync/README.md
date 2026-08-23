@@ -8,12 +8,19 @@ hosted runner.
 
 1. GitHub publishes the Release and finishes the R2 `latest/*` sync.
 2. GitHub calls `POST /sync/start` with the release tag.
-3. The Workflow reads R2 in ranges and uploads objects to an IHEP staging prefix.
+3. The Workflow removes abandoned staging objects and multipart uploads older
+   than `SECONDARY_SYNC_STAGE_GRACE_HOURS`, then reads R2 in ranges and uploads
+   objects to an IHEP staging prefix.
 4. It copies staging objects to `latest/*` on IHEP, committing `latest/manifest`
    after installers, Sparkle archives, checksums, and appcasts.
 5. It removes stale latest aliases that are absent from the current manifest,
    prunes stale `latest/mac/*` Sparkle archives outside the grace window, and
-   removes staging objects.
+   removes staging objects. If upload or commit fails, it also attempts to
+   remove the current instance's staging objects before preserving the original
+   Workflow error.
+
+The default staging grace window is two hours. It protects recent concurrent
+instances while bounding storage leaked by interrupted or terminated Workflows.
 
 ## Required secrets
 

@@ -1,0 +1,156 @@
+name: Publish Linux Preview GitHub prerelease
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_linux_version:
+        description: Exact version currently signed in all four official Linux repositories
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# Serialize with Stable and Beta publication so the before/after GitHub Latest
+# assertion cannot race a legitimate Stable release. This workflow never writes
+# object storage or any shared latest route.
+concurrency:
+  group: codex-app-mirror
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    name: Freeze signed Linux Preview repositories
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Verify signed APT/RPM metadata and freeze four versioned packages
+        env:
+          EXPECTED_LINUX_VERSION: ${{ inputs.expected_linux_version }}
+        shell: bash
+        run: bash scripts/probe-linux-preview.sh probe-manifest.json
+
+      - name: Snapshot GitHub Latest before Linux Preview publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name > github-latest-before.txt
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux-preview-probe
+          path: |
+            probe-manifest.json
+            github-latest-before.txt
+          if-no-files-found: error
+          retention-days: 1
+
+  linux:
+    name: Download and verify four Linux packages
+    needs: probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: linux-preview-probe
+          path: .
+
+      - name: Install Debian and RPM package inspection tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --yes rpm
+
+      - name: Download exact versioned packages and verify repository checksums
+        shell: bash
+        run: bash scripts/download-linux-preview.sh dist/linux probe-manifest.json
+
+      - name: Enforce package identity, embedded key, file list, and RPM signatures
+        shell: bash
+        run: bash scripts/verify-linux-preview.sh probe-manifest.json dist/linux dist/linux/linux-identity.json
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: codex-linux-preview
+          path: dist/linux/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  release:
+    name: Publish GitHub-only Linux Preview prerelease
+    needs:
+      - probe
+      - linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: Finalize immutable Linux Preview contract
+        env:
+          RELEASE_TAG: codex-app-linux-preview-${{ inputs.expected_linux_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp artifacts/linux-preview-probe/probe-manifest.json release-manifest.json
+          bash scripts/finalize-linux-preview.sh \
+            release-manifest.json \
+            artifacts/codex-linux-preview/linux-identity.json \
+            artifacts/codex-linux-preview \
+            "${{ inputs.expected_linux_version }}" \
+            "$RELEASE_TAG"
+
+      - name: Publish GitHub prerelease without moving GitHub Latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: codex-app-linux-preview-${{ inputs.expected_linux_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/publish-linux-preview-release.sh \
+            "$RELEASE_TAG" \
+            "ChatGPT desktop app for Linux Preview ${{ inputs.expected_linux_version }}" \
+            release-notes.md \
+            release-manifest.json \
+            SHA256SUMS.txt \
+            artifacts/codex-linux-preview
+
+      - name: Verify prerelease and prove GitHub Latest was untouched
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: codex-app-linux-preview-${{ inputs.expected_linux_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name > github-latest-after.txt
+          cmp artifacts/linux-preview-probe/github-latest-before.txt github-latest-after.txt
+          gh release view "$RELEASE_TAG" --json isDraft,isPrerelease,tagName,assets \
+            --jq 'select(.isDraft == false and .isPrerelease == true and (.assets | length) == 8)'
+
+      - name: Write publication summary
+        shell: bash
+        run: |
+          tag="codex-app-linux-preview-${{ inputs.expected_linux_version }}"
+          {
+            echo "## Linux Preview GitHub prerelease published"
+            echo
+            echo "- GitHub prerelease: https://github.com/${{ github.repository }}/releases/tag/$tag"
+            echo "- Linux version: ${{ inputs.expected_linux_version }}"
+            echo "- Packages: x64/ARM64 for both DEB and RPM"
+            echo "- GitHub Latest advanced: no"
+            echo "- Object-storage publication: disabled"
+          } >> "$GITHUB_STEP_SUMMARY"

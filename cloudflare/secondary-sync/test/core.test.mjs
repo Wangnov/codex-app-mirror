@@ -8,6 +8,7 @@ import {
   deleteStaleAliasObjects,
   decoratePlanWithStage,
   deriveReleaseTag,
+  pruneAbandonedStageObjects,
   pruneStaleLatestMacObjects,
   uploadObjectToStage,
 } from "../src/core.js";
@@ -123,6 +124,36 @@ test("uploads a ranged multipart object to staging and commits both Windows alia
   assert.equal(s3.objects.has(item.stageKey), false);
 });
 
+test("restores the published alias when the commit copy fails", async () => {
+  const stageKey = "staging/test/instance-1/objects/win-x64";
+  const s3 = createMockS3({ failCopyFrom: (sourceKey) => sourceKey === stageKey });
+  s3.objects.set(stageKey, objectEntry("next-release"));
+  s3.objects.set("latest/win", objectEntry("published-release"));
+  globalThis.fetch = s3.fetch;
+
+  const item = { id: "win-x64", stageKey, aliasKeys: ["latest/win"] };
+
+  await assert.rejects(() => commitObjectToAliases(fixtureEnv(new Map()), item));
+
+  assert.equal(text(s3.objects.get("latest/win").bytes), "published-release");
+  assert.equal(s3.objects.has("latest/win.rollback"), false);
+});
+
+test("commits the alias and clears its rollback backup on success", async () => {
+  const stageKey = "staging/test/instance-1/objects/win-x64";
+  const s3 = createMockS3();
+  s3.objects.set(stageKey, objectEntry("next-release"));
+  s3.objects.set("latest/win", objectEntry("published-release"));
+  globalThis.fetch = s3.fetch;
+
+  const item = { id: "win-x64", stageKey, aliasKeys: ["latest/win"] };
+  const commit = await commitObjectToAliases(fixtureEnv(new Map()), item);
+
+  assert.deepEqual(commit.aliases, [{ key: "latest/win", size: 12 }]);
+  assert.equal(text(s3.objects.get("latest/win").bytes), "next-release");
+  assert.equal(s3.objects.has("latest/win.rollback"), false);
+});
+
 test("deletes stale latest aliases from the secondary mirror", async () => {
   const s3 = createMockS3();
   s3.objects.set("latest/win-arm64", objectEntry("old-arm64"));
@@ -156,6 +187,45 @@ test("prunes stale unreferenced Sparkle archives but keeps current and recent ob
   assert.equal(s3.objects.has("latest/mac/arm64/current.zip"), true);
   assert.equal(s3.objects.has("latest/mac/arm64/current.delta"), true);
   assert.equal(s3.objects.has("latest/mac/intel/recent.zip"), true);
+});
+
+test("prunes abandoned staging objects and multipart uploads without touching active work", async () => {
+  const s3 = createMockS3();
+  const old = new Date("2020-01-01T00:00:00Z");
+  const recent = new Date(Date.now() + 60_000);
+  const activePrefix = "staging/secondary-sync/release/active";
+  s3.objects.set("staging/secondary-sync/release/old/objects/archive", objectEntry("old", old));
+  s3.objects.set("staging/secondary-sync/release/recent/objects/archive", objectEntry("recent", recent));
+  s3.objects.set(`${activePrefix}/objects/archive`, objectEntry("active", old));
+  s3.objects.set("latest/win", objectEntry("published", old));
+  s3.uploads.set("upload-old", {
+    key: "staging/secondary-sync/release/old/objects/partial",
+    parts: new Map(),
+    initiated: old,
+  });
+  s3.uploads.set("upload-active", {
+    key: `${activePrefix}/objects/partial`,
+    parts: new Map(),
+    initiated: old,
+  });
+  globalThis.fetch = s3.fetch;
+
+  const result = await pruneAbandonedStageObjects(fixtureEnv(new Map()), activePrefix, {
+    graceHours: 1,
+  });
+
+  assert.deepEqual(result.deleted, ["staging/secondary-sync/release/old/objects/archive"]);
+  assert.deepEqual(result.aborted, [
+    {
+      key: "staging/secondary-sync/release/old/objects/partial",
+      uploadId: "upload-old",
+    },
+  ]);
+  assert.equal(s3.objects.has("staging/secondary-sync/release/recent/objects/archive"), true);
+  assert.equal(s3.objects.has(`${activePrefix}/objects/archive`), true);
+  assert.equal(s3.objects.has("latest/win"), true);
+  assert.equal(s3.uploads.has("upload-old"), false);
+  assert.equal(s3.uploads.has("upload-active"), true);
 });
 
 test("falls back to ListObjectsV2 when nested HEAD returns 403", async () => {
@@ -300,10 +370,11 @@ class MockR2Bucket {
   }
 }
 
-function createMockS3() {
+function createMockS3(options = {}) {
   const objects = new Map();
   const uploads = new Map();
   let uploadCounter = 0;
+  const failCopyFrom = options.failCopyFrom || (() => false);
 
   async function fetch(input, init = {}) {
     const url = new URL(input);
@@ -321,6 +392,20 @@ function createMockS3() {
         )
         .join("");
       return new Response(`<ListBucketResult>${contents}</ListBucketResult>`, { status: 200 });
+    }
+
+    if (method === "GET" && url.searchParams.has("uploads")) {
+      const prefix = url.searchParams.get("prefix") || "";
+      const entries = [...uploads.entries()]
+        .filter(([, upload]) => upload.key.startsWith(prefix))
+        .map(
+          ([uploadId, upload]) =>
+            `<Upload><Key>${xmlEscape(upload.key)}</Key><UploadId>${xmlEscape(uploadId)}</UploadId><Initiated>${upload.initiated.toISOString()}</Initiated></Upload>`,
+        )
+        .join("");
+      return new Response(`<ListMultipartUploadsResult>${entries}</ListMultipartUploadsResult>`, {
+        status: 200,
+      });
     }
 
     if (method === "HEAD") {
@@ -354,7 +439,7 @@ function createMockS3() {
 
     if (method === "POST" && url.searchParams.has("uploads")) {
       const uploadId = `upload-${++uploadCounter}`;
-      uploads.set(uploadId, { key, parts: new Map() });
+      uploads.set(uploadId, { key, parts: new Map(), initiated: new Date() });
       return new Response(`<InitiateMultipartUploadResult><UploadId>${uploadId}</UploadId></InitiateMultipartUploadResult>`);
     }
 
@@ -380,6 +465,9 @@ function createMockS3() {
 
     if (method === "PUT" && headers.has("x-amz-copy-source")) {
       const sourceKey = parseCopySource(headers.get("x-amz-copy-source"));
+      if (failCopyFrom(sourceKey)) {
+        return new Response("<Error><Code>InternalError</Code></Error>", { status: 500 });
+      }
       const source = objects.get(sourceKey);
       if (!source) {
         return new Response("missing copy source", { status: 404 });
