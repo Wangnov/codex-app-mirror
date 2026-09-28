@@ -40,8 +40,14 @@ Structure:
 - `sources.windows` (`$defs/windowsSource`) types every field the Rust parser reads
   (`version`, `appVersion`, `packageMoniker`, `architecture`, `contentLength`, `etag`,
   `lastModified`, `productId`/`updateManifest`, and the `architectures` map) and requires
-  that **at least one** of a top-level `packageMoniker` or a non-empty `architectures` map
-  is present — mirroring the Rust fallback logic, which fails the parse otherwise.
+  that **either** a fully-populated top-level fallback (`packageMoniker` **and** `version`)
+  **or** `architectures.x64` specifically (not just any non-empty `architectures` map) is
+  present. This mirrors `select_architecture()`'s actual behavior: it defaults the
+  requested architecture to `x64` when the Manager's own update check doesn't ask for a
+  specific one, and only looks up that one key — it never falls back to a different
+  architecture's entry (e.g. an `arm64`-only `architectures` map does **not** satisfy this
+  requirement, even though it's a non-empty map, because the default x64 parse path would
+  still fail with `"missing Windows version"`).
 - Each `sources.windows.architectures.<arch>` entry (`$defs/windowsArchitectureSource`)
   requires `version` and `packageMoniker` **unless** `downloadable` is explicitly `false`
   (catalog-only, rollout-drift, or version-unreadable states legitimately omit or stale

@@ -46,16 +46,6 @@
       "minLength": 1,
       "description": "Either an RFC 1123 HTTP-date (as returned by upstream Last-Modified headers) or an ISO-8601 timestamp. Not constrained to a single `format` keyword because both shapes are real, current output."
     },
-    "sha256Hex": {
-      "type": "string",
-      "pattern": "^[0-9a-f]{64}$",
-      "description": "Lowercase 64-character hex SHA-256 digest."
-    },
-    "httpsUrl": {
-      "type": "string",
-      "format": "uri",
-      "pattern": "^https://"
-    },
     "packageMoniker": {
       "type": "string",
       "minLength": 1,
@@ -82,7 +72,7 @@
 
     "windowsSource": {
       "type": "object",
-      "description": "Consumed by crates/codex-win-engine/src/manifest.rs::parse_manifest_for_arch in Codex-App-Manager. Every field here is Option in Rust, with a per-architecture entry preferred over this top-level fallback; the anyOf below encodes the invariant that at least one of the two must supply a package moniker and a package version, or the Manager's manifest parse fails outright.",
+      "description": "Consumed by crates/codex-win-engine/src/manifest.rs::parse_manifest_for_arch in Codex-App-Manager. Every field here is Option in Rust, with a per-architecture entry preferred over this top-level fallback. select_architecture() defaults the requested architecture to \"x64\" when the caller (the Manager's own update check) doesn't ask for a specific one, and only looks up that single key in `architectures` -- it never falls back to a different architecture's entry (e.g. arm64-only) when the requested one is missing. So the anyOf below requires either a fully-populated top-level fallback (`packageMoniker` + `version`), or `architectures.x64` specifically (validated against windowsArchitectureSource); an architectures map containing only e.g. `arm64` does not satisfy it, matching the parse failure ('missing Windows version') a Manager on the default x64 path would hit.",
       "properties": {
         "version": { "type": "string", "minLength": 1 },
         "appVersion": { "type": "string", "minLength": 1 },
@@ -108,11 +98,11 @@
       },
       "additionalProperties": true,
       "anyOf": [
-        { "required": ["packageMoniker"] },
+        { "required": ["packageMoniker", "version"] },
         {
           "required": ["architectures"],
           "properties": {
-            "architectures": { "type": "object", "minProperties": 1 }
+            "architectures": { "type": "object", "required": ["x64"] }
           }
         }
       ]
@@ -132,7 +122,6 @@
         "etag": { "type": "string" },
         "lastModified": { "$ref": "#/$defs/dateTimeLike" },
         "backendVersion": { "type": "string", "minLength": 1 },
-        "sha256": { "$ref": "#/$defs/sha256Hex" },
         "packageIdentity": { "type": "string", "minLength": 1 }
       },
       "additionalProperties": true,

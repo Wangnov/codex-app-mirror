@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 5,
+  "generatedAt": "2026-09-28T15:07:35Z",
+  "sources": {
+    "windows": {
+      "architectures": {
+        "arm64": {
+          "architecture": "arm64",
+          "status": "downloadable",
+          "downloadable": true,
+          "version": "1.2.4.4",
+          "packageMoniker": "OpenAI.Codex_1.2.4.4_arm64__2p2nqsd0c76g0",
+          "contentLength": 12
+        }
+      }
+    },
+    "macos": {
+      "arm64": { "bundleShortVersion": "1.2.3", "bundleVersion": "5" },
+      "x64": { "bundleShortVersion": "1.2.3", "bundleVersion": "5" }
+    }
+  },
+  "codexVersion": "1.2.3",
+  "publishedAt": "2026-09-28T19:10:20Z"
+}

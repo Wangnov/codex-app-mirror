@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 5,
+  "sources": {
+    "windows": {
+      "architectures": {
+        "x64": {
+          "architecture": "x64",
+          "status": "downloadable",
+          "downloadable": true,
+          "version": "1.2.3.4",
+          "packageMoniker": "OpenAI.Codex_1.2.3.4_x64__2p2nqsd0c76g0",
+          "contentLength": 3
+        }
+      }
+    },
+    "macos": {
+      "arm64": { "bundleShortVersion": "1.2.3", "bundleVersion": "5" },
+      "x64": { "bundleShortVersion": "1.2.3", "bundleVersion": "5" }
+    }
+  },
+  "codexVersion": "1.2.3"
+}

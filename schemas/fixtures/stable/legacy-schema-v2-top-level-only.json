@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 2,
+  "sources": {
+    "windows": {
+      "productId": "9PLM9XGG6VKS",
+      "architecture": "x64",
+      "version": "26.602.3474.0",
+      "packageMoniker": "OpenAI.Codex_26.602.3474.0_x64__2p2nqsd0c76g0",
+      "contentLength": 566504666,
+      "lastModified": "Fri, 26 Jun 2026 05:10:43 GMT",
+      "etag": "\"abc\"",
+      "updateManifest": {
+        "storeProductId": "9PLM9XGG6VKS",
+        "packageIdentity": "OpenAI.Codex"
+      }
+    },
+    "macos": {
+      "arm64": { "bundleShortVersion": "26.602.30954", "bundleVersion": "3575" },
+      "x64": { "bundleShortVersion": "26.602.30954", "bundleVersion": "3575" }
+    }
+  }
+}
