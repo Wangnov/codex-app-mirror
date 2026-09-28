@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Wangnov/codex-app-mirror/main/schemas/release-manifest.schema.json",
+  "title": "codex-app-mirror release manifest",
+  "description": "Contract for release-manifest.json, published at https://codexapp.agentsmirror.com/latest/manifest and as a GitHub Release asset on every codex-app-mirror release (stable, beta and linux-preview channels). Fields Codex App Manager parses (see docs/manifest-schema.md) are typed and validated strictly; everything else is intentionally permissive so harmless additions never break publishing or downstream parsing.",
+  "type": "object",
+  "required": ["schemaVersion", "sources"],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Monotonically increasing contract version. Codex App Manager's Windows parser rejects schemaVersion < 2 outright; see docs/manifest-schema.md for the versioning rule."
+    },
+    "channel": {
+      "type": "string",
+      "description": "Present on non-stable publications (\"beta\", \"linux-preview\"). Absent on the stable channel."
+    },
+    "generatedAt": { "$ref": "#/$defs/dateTimeLike" },
+    "publishedAt": { "$ref": "#/$defs/dateTimeLike" },
+    "codexVersion": { "type": "string", "minLength": 1 },
+    "sources": {
+      "type": "object",
+      "minProperties": 1
+    }
+  },
+  "additionalProperties": true,
+  "allOf": [
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "sources": {
+            "type": "object",
+            "required": ["linux"]
+          }
+        },
+        "required": ["sources"]
+      },
+      "then": { "$ref": "#/$defs/linuxChannelManifest" },
+      "else": { "$ref": "#/$defs/windowsMacosChannelManifest" }
+    }
+  ],
+  "$defs": {
+    "dateTimeLike": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Either an RFC 1123 HTTP-date (as returned by upstream Last-Modified headers) or an ISO-8601 timestamp. Not constrained to a single `format` keyword because both shapes are real, current output."
+    },
+    "sha256Hex": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Lowercase 64-character hex SHA-256 digest."
+    },
+    "httpsUrl": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://"
+    },
+    "packageMoniker": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._-]+$",
+      "description": "Windows MSIX package full name / moniker, e.g. OpenAI.Codex_26.924.2738.0_x64__2p2nqsd0c76g0."
+    },
+
+    "windowsMacosChannelManifest": {
+      "type": "object",
+      "required": ["sources"],
+      "properties": {
+        "sources": {
+          "type": "object",
+          "required": ["windows"],
+          "properties": {
+            "windows": { "$ref": "#/$defs/windowsSource" },
+            "macos": { "$ref": "#/$defs/macosSource" }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+
+    "windowsSource": {
+      "type": "object",
+      "description": "Consumed by crates/codex-win-engine/src/manifest.rs::parse_manifest_for_arch in Codex-App-Manager. Every field here is Option in Rust, with a per-architecture entry preferred over this top-level fallback; the anyOf below encodes the invariant that at least one of the two must supply a package moniker and a package version, or the Manager's manifest parse fails outright.",
+      "properties": {
+        "version": { "type": "string", "minLength": 1 },
+        "appVersion": { "type": "string", "minLength": 1 },
+        "packageMoniker": { "$ref": "#/$defs/packageMoniker" },
+        "architecture": { "type": "string", "minLength": 1 },
+        "contentLength": { "type": "integer", "minimum": 0 },
+        "etag": { "type": "string" },
+        "lastModified": { "$ref": "#/$defs/dateTimeLike" },
+        "productId": { "type": "string", "minLength": 1 },
+        "packageIdentity": { "type": "string", "minLength": 1 },
+        "updateManifest": {
+          "type": "object",
+          "properties": {
+            "storeProductId": { "type": "string", "minLength": 1 },
+            "packageIdentity": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": true
+        },
+        "architectures": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/windowsArchitectureSource" }
+        }
+      },
+      "additionalProperties": true,
+      "anyOf": [
+        { "required": ["packageMoniker"] },
+        {
+          "required": ["architectures"],
+          "properties": {
+            "architectures": { "type": "object", "minProperties": 1 }
+          }
+        }
+      ]
+    },
+
+    "windowsArchitectureSource": {
+      "type": "object",
+      "description": "One entry of sources.windows.architectures.<x64|arm64>. When `downloadable` is explicitly false (catalog-only / drifted / unreadable states), version and packageMoniker may be withheld or stale, so the strict requirement below only applies when the architecture is (or may be) downloadable.",
+      "properties": {
+        "architecture": { "type": "string", "minLength": 1 },
+        "status": { "type": "string", "minLength": 1 },
+        "downloadable": { "type": "boolean" },
+        "version": { "type": "string", "minLength": 1 },
+        "appVersion": { "type": "string", "minLength": 1 },
+        "packageMoniker": { "$ref": "#/$defs/packageMoniker" },
+        "contentLength": { "type": "integer", "minimum": 0 },
+        "etag": { "type": "string" },
+        "lastModified": { "$ref": "#/$defs/dateTimeLike" },
+        "backendVersion": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/sha256Hex" },
+        "packageIdentity": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "properties": { "downloadable": { "const": false } },
+            "required": ["downloadable"]
+          },
+          "then": {},
+          "else": { "required": ["version", "packageMoniker"] }
+        }
+      ]
+    },
+
+    "macosSource": {
+      "type": "object",
+      "description": "Not read by Codex App Manager today (it installs macOS updates from GitHub Release SHA256SUMS assets instead); kept permissive and only lightly typed for forward-compatibility with docs/manifest-contract.md's documented shape.",
+      "properties": {
+        "arm64": { "$ref": "#/$defs/macosArchSource" },
+        "x64": { "$ref": "#/$defs/macosArchSource" }
+      },
+      "additionalProperties": true
+    },
+    "macosArchSource": {
+      "type": "object",
+      "properties": {
+        "bundleShortVersion": { "type": "string", "minLength": 1 },
+        "bundleVersion": { "type": "string", "minLength": 1 },
+        "bundleIdentifier": { "type": "string", "minLength": 1 },
+        "sha256": {
+          "type": "string",
+          "description": "Expected to be a lowercase 64-hex SHA-256 digest (or empty) in production; not enforced by pattern here because this field is not Manager-consumed and fixture manifests legitimately use placeholder values."
+        }
+      },
+      "additionalProperties": true
+    },
+
+    "linuxChannelManifest": {
+      "type": "object",
+      "description": "linux-preview channel (schemaVersion 6 today). Not consumed by Codex App Manager (Linux is not a supported install target), so this branch stays deliberately loose: only the presence and object-ness of sources.linux is enforced.",
+      "required": ["sources"],
+      "properties": {
+        "channel": { "const": "linux-preview" },
+        "sources": {
+          "type": "object",
+          "required": ["linux"],
+          "properties": {
+            "linux": { "type": "object", "additionalProperties": true }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

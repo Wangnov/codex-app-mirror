@@ -1,0 +1,219 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-10T04:54:09Z",
+  "version": "26.707.3351.0",
+  "emergency": {
+    "contract": "issue-36-windows-beta",
+    "channel": "beta",
+    "expectedExecutable": "app/ChatGPT (Beta).exe",
+    "sharedLatestAdvanced": false
+  },
+  "derived": {
+    "prerelease": true,
+    "publishLatest": false,
+    "syncLatest": false,
+    "includeWindowsX64": true,
+    "includeWindowsArm64": true,
+    "includeMacosArm64": false,
+    "includeMacosX64": false,
+    "missingArchitectures": [],
+    "emergencyCandidate": true
+  },
+  "sources": {
+    "windows": {
+      "productId": "9N8CJ4W95TBZ",
+      "packageIdentity": "OpenAI.CodexBeta",
+      "packageFamilyName": "OpenAI.CodexBeta_2p2nqsd0c76g0",
+      "version": "26.707.3351.0",
+      "architectures": {
+        "x64": {
+          "architecture": "x64",
+          "status": "downloadable",
+          "downloadable": true,
+          "version": "26.707.3351.0",
+          "packageMoniker": "OpenAI.CodexBeta_26.707.3351.0_x64__2p2nqsd0c76g0",
+          "urlHost": "http://tlu.dl.delivery.mp.microsoft.com",
+          "contentLength": 728598083,
+          "lastModified": "Thu, 09 Jul 2026 17:06:30 GMT",
+          "etag": "\"ML7Sk0Nm9OC/cMOKZEZKDQz/ho0=\"",
+          "catalog": {
+            "Applications": [
+              {
+                "ApplicationId": "App",
+                "DeclarationOrder": 0,
+                "Extensions": [
+                  "protocol-codex",
+                  "fileTypeAssociation-.csv",
+                  "fileTypeAssociation-.tsv",
+                  "fileTypeAssociation-.xls",
+                  "fileTypeAssociation-.xlsm",
+                  "fileTypeAssociation-.xlsx",
+                  "fileTypeAssociation-.skill"
+                ]
+              }
+            ],
+            "Architectures": [
+              "x64"
+            ],
+            "Capabilities": [
+              "runFullTrust",
+              "unvirtualizedResources",
+              "internetClient",
+              "Microsoft.storeFilter.core.notSupported_8wekyb3d8bbwe"
+            ],
+            "DeviceCapabilities": [],
+            "ExperienceIds": [],
+            "FrameworkDependencies": [],
+            "HardwareDependencies": [],
+            "HardwareRequirements": [],
+            "Hash": "ofzY+2gcw02EWQOWdIFGdX1HnkKkMWE2RwEvMsDFGqw=",
+            "HashAlgorithm": "SHA256",
+            "IsStreamingApp": false,
+            "Languages": [
+              "en-us"
+            ],
+            "MaxDownloadSizeInBytes": 728598083,
+            "MaxInstallSizeInBytes": 1936142336,
+            "PackageFormat": "Msix",
+            "PackageFamilyName": "OpenAI.CodexBeta_2p2nqsd0c76g0",
+            "MainPackageFamilyNameForDlc": null,
+            "PackageFullName": "OpenAI.CodexBeta_26.707.3351.0_x64__2p2nqsd0c76g0",
+            "PackageId": "7d0bd62d-7e9e-1a56-6d72-7fce036675e6-X64",
+            "ContentId": "eae2dd04-9582-9d2a-8e7e-ce884666fa80",
+            "KeyId": null,
+            "PackageRank": 30002,
+            "PackageUri": "https://productingestionbin1.blob.core.windows.net",
+            "PlatformDependencies": [
+              {
+                "MaxTested": 2814751477596160,
+                "MinVersion": 2814751014977536,
+                "PlatformName": "Windows.Desktop"
+              }
+            ],
+            "PlatformDependencyXmlBlob": "{\"blob.version\":1688867040526336,\"content.isMain\":false,\"content.packageId\":\"OpenAI.CodexBeta_26.707.3351.0_x64__2p2nqsd0c76g0\",\"content.productId\":\"8db22a99-a4a5-4a8f-b87c-0b07b3b5a0d3\",\"content.targetPlatforms\":[{\"platform.maxVersionTested\":2814751477596160,\"platform.minVersion\":2814751014977536,\"platform.target\":3}],\"content.type\":7,\"policy\":{\"category.first\":\"app\",\"category.second\":\"Developer tools\",\"category.third\":\"Development kits\",\"optOut.backupRestore\":false,\"optOut.removeableMedia\":false},\"policy2\":{\"ageRating\":1,\"optOut.DVR\":false,\"thirdPartyAppRatings\":[{\"level\":7,\"systemId\":3},{\"level\":12,\"systemId\":5},{\"level\":51,\"systemId\":12},{\"level\":27,\"systemId\":9},{\"level\":76,\"systemId\":16},{\"level\":68,\"systemId\":15}]}}",
+            "ResourceId": "",
+            "Version": "7321386155966464",
+            "PackageDownloadUris": null,
+            "DriverDependencies": [],
+            "FulfillmentData": {
+              "ProductId": "9N8CJ4W95TBZ",
+              "WuBundleId": "a344c829-27fd-4d25-9554-bc68ff8124d2",
+              "WuCategoryId": "9bfa44df-931c-4285-9fca-f31bdf65218f",
+              "PackageFamilyName": "OpenAI.CodexBeta_2p2nqsd0c76g0",
+              "SkuId": "0010",
+              "Content": null,
+              "PackageFeatures": null
+            }
+          },
+          "fileName": "OpenAI.CodexBeta_26.707.3351.0_x64__2p2nqsd0c76g0.Msix",
+          "sha256": "a1fcd8fb681cc34d84590396748146757d479e42a431613647012f32c0c51aac",
+          "packageIdentity": "OpenAI.CodexBeta",
+          "packageFamilyName": "OpenAI.CodexBeta_2p2nqsd0c76g0",
+          "applicationId": "App",
+          "applicationExecutable": "app/ChatGPT (Beta).exe",
+          "applicationArchivePath": "app/ChatGPT%20%28Beta%29.exe"
+        },
+        "arm64": {
+          "architecture": "arm64",
+          "status": "downloadable",
+          "downloadable": true,
+          "version": "26.707.3351.0",
+          "packageMoniker": "OpenAI.CodexBeta_26.707.3351.0_arm64__2p2nqsd0c76g0",
+          "urlHost": "http://tlu.dl.delivery.mp.microsoft.com",
+          "contentLength": 723923759,
+          "lastModified": "Thu, 09 Jul 2026 17:06:30 GMT",
+          "etag": "\"Ce4Or4vWc/4qhVGA3BCEGM3U1bc=\"",
+          "catalog": {
+            "Applications": [
+              {
+                "ApplicationId": "App",
+                "DeclarationOrder": 0,
+                "Extensions": [
+                  "protocol-codex",
+                  "fileTypeAssociation-.csv",
+                  "fileTypeAssociation-.tsv",
+                  "fileTypeAssociation-.xls",
+                  "fileTypeAssociation-.xlsm",
+                  "fileTypeAssociation-.xlsx",
+                  "fileTypeAssociation-.skill"
+                ]
+              }
+            ],
+            "Architectures": [
+              "arm64"
+            ],
+            "Capabilities": [
+              "runFullTrust",
+              "unvirtualizedResources",
+              "internetClient",
+              "Microsoft.storeFilter.core.notSupported_8wekyb3d8bbwe"
+            ],
+            "DeviceCapabilities": [],
+            "ExperienceIds": [],
+            "FrameworkDependencies": [],
+            "HardwareDependencies": [],
+            "HardwareRequirements": [],
+            "Hash": "1QqRlGZJXZyvSezy5Xi/B5kHjO7mgA/sKieNCCUCD8I=",
+            "HashAlgorithm": "SHA256",
+            "IsStreamingApp": false,
+            "Languages": [
+              "en-us"
+            ],
+            "MaxDownloadSizeInBytes": 723923759,
+            "MaxInstallSizeInBytes": 1956540416,
+            "PackageFormat": "Msix",
+            "PackageFamilyName": "OpenAI.CodexBeta_2p2nqsd0c76g0",
+            "MainPackageFamilyNameForDlc": null,
+            "PackageFullName": "OpenAI.CodexBeta_26.707.3351.0_arm64__2p2nqsd0c76g0",
+            "PackageId": "cb8507df-f099-e6db-108f-5f392890b964-Arm64",
+            "ContentId": "eae2dd04-9582-9d2a-8e7e-ce884666fa80",
+            "KeyId": null,
+            "PackageRank": 30005,
+            "PackageUri": "https://productingestionbin1.blob.core.windows.net",
+            "PlatformDependencies": [
+              {
+                "MaxTested": 2814751477596160,
+                "MinVersion": 2814751014977536,
+                "PlatformName": "Windows.Desktop"
+              }
+            ],
+            "PlatformDependencyXmlBlob": "{\"blob.version\":1688867040526336,\"content.isMain\":false,\"content.packageId\":\"OpenAI.CodexBeta_26.707.3351.0_arm64__2p2nqsd0c76g0\",\"content.productId\":\"8db22a99-a4a5-4a8f-b87c-0b07b3b5a0d3\",\"content.targetPlatforms\":[{\"platform.maxVersionTested\":2814751477596160,\"platform.minVersion\":2814751014977536,\"platform.target\":3}],\"content.type\":7,\"policy\":{\"category.first\":\"app\",\"category.second\":\"Developer tools\",\"category.third\":\"Development kits\",\"optOut.backupRestore\":false,\"optOut.removeableMedia\":false},\"policy2\":{\"ageRating\":1,\"optOut.DVR\":false,\"thirdPartyAppRatings\":[{\"level\":7,\"systemId\":3},{\"level\":12,\"systemId\":5},{\"level\":51,\"systemId\":12},{\"level\":27,\"systemId\":9},{\"level\":76,\"systemId\":16},{\"level\":68,\"systemId\":15}]}}",
+            "ResourceId": "",
+            "Version": "7321386155966464",
+            "PackageDownloadUris": null,
+            "DriverDependencies": [],
+            "FulfillmentData": {
+              "ProductId": "9N8CJ4W95TBZ",
+              "WuBundleId": "a344c829-27fd-4d25-9554-bc68ff8124d2",
+              "WuCategoryId": "9bfa44df-931c-4285-9fca-f31bdf65218f",
+              "PackageFamilyName": "OpenAI.CodexBeta_2p2nqsd0c76g0",
+              "SkuId": "0010",
+              "Content": null,
+              "PackageFeatures": null
+            }
+          },
+          "fileName": "OpenAI.CodexBeta_26.707.3351.0_arm64__2p2nqsd0c76g0.Msix",
+          "sha256": "d50a919466495d9caf49ecf2e578bf0799078ceee6800fec2a278d0825020fc2",
+          "packageIdentity": "OpenAI.CodexBeta",
+          "packageFamilyName": "OpenAI.CodexBeta_2p2nqsd0c76g0",
+          "applicationId": "App",
+          "applicationExecutable": "app/ChatGPT (Beta).exe",
+          "applicationArchivePath": "app/ChatGPT%20%28Beta%29.exe"
+        }
+      }
+    }
+  },
+  "candidate": {
+    "releaseTag": "codex-app-beta-26.707.3351.0",
+    "prefix": "releases/codex-app-beta-26.707.3351.0",
+    "baseUrl": "https://codexapp-r2.agentsmirror.com/releases/codex-app-beta-26.707.3351.0",
+    "manifestUrl": "https://codexapp-r2.agentsmirror.com/releases/codex-app-beta-26.707.3351.0/latest/manifest",
+    "checksumsUrl": "https://codexapp-r2.agentsmirror.com/releases/codex-app-beta-26.707.3351.0/latest/checksums",
+    "windowsIdentityUrl": "https://codexapp-r2.agentsmirror.com/releases/codex-app-beta-26.707.3351.0/latest/windows-identity.json",
+    "windowsUrl": "https://codexapp-r2.agentsmirror.com/releases/codex-app-beta-26.707.3351.0/latest/win",
+    "windowsX64Url": "https://codexapp-r2.agentsmirror.com/releases/codex-app-beta-26.707.3351.0/latest/win-x64",
+    "windowsArm64Url": "https://codexapp-r2.agentsmirror.com/releases/codex-app-beta-26.707.3351.0/latest/win-arm64",
+    "sharedLatestAdvanced": false,
+    "contract": "issue-36-windows-beta"
+  }
+}

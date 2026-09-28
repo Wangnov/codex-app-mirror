@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 6,
+  "channel": "linux-preview",
+  "generatedAt": "2026-08-12T15:01:05Z",
+  "preview": {
+    "contract": "linux-preview-v1",
+    "expectedVersion": "26.803.81509",
+    "officialAnnouncement": "https://x.com/OpenAI/status/2087248033906094175",
+    "officialLandingPage": "https://openai.com/codex/",
+    "repositorySigningKey": {
+      "fingerprint": "3BFA0E4AE8B8CC16A2D9BA684A3B4A566C4660E4",
+      "sha256": "23e2cfbdef6afe95505f9e95a2cb63585da7ffe9b06a51ec08a32407c847d596"
+    }
+  },
+  "publication": {
+    "githubPrereleaseOnly": true,
+    "githubLatestAdvanced": false,
+    "objectStoragePublished": false,
+    "sharedLatestAdvanced": false
+  },
+  "derived": {
+    "prerelease": true,
+    "publishLatest": false,
+    "syncLatest": false
+  },
+  "repositories": {
+    "deb": {
+      "inReleaseUrl": "https://persistent.oaistatic.com/codex-app-prod/linux/deb/dists/stable/InRelease",
+      "inReleaseSha256": "e23d5904e87f3a6e6b1f83b94071677c6b1e80cd61dddff1b1a72377d8cba3b3",
+      "signatureVerified": true
+    },
+    "rpm": {
+      "x64": {
+        "repomdUrl": "https://persistent.oaistatic.com/codex-app-prod/linux/rpm/x86_64/repodata/repomd.xml",
+        "repomdSha256": "2de0aed0dd92305468e27da8113417299c1defb647b9056c1a1aaab9be518e5a",
+        "signatureVerified": true
+      },
+      "arm64": {
+        "repomdUrl": "https://persistent.oaistatic.com/codex-app-prod/linux/rpm/aarch64/repodata/repomd.xml",
+        "repomdSha256": "35d7275a051c1d25b90272774e97282c8ca249792836f71cd7fed89de1598f8d",
+        "signatureVerified": true
+      }
+    }
+  },
+  "sources": {
+    "linux": {
+      "architectures": {
+        "arm64": {
+          "deb": {
+            "contentLength": 321468486,
+            "format": "deb",
+            "mirrorBasename": "chatgpt_26.803.81509_arm64.deb",
+            "packageArchitecture": "arm64",
+            "packageName": "chatgpt",
+            "sha256": "f38fcc194eca9ab0327dc10c92340681eae77c5d75164df700384ce2adaccbc1",
+            "sourceBasename": "chatgpt_26.803.81509_arm64.deb",
+            "sourcePath": "pool/main/c/chatgpt/chatgpt_26.803.81509_arm64.deb",
+            "url": "https://persistent.oaistatic.com/codex-app-prod/linux/deb/pool/main/c/chatgpt/chatgpt_26.803.81509_arm64.deb",
+            "version": "26.803.81509",
+            "verified": true,
+            "repositoryMetadataSignatureVerified": true,
+            "packageChecksumVerified": true,
+            "embeddedRepositoryKeyVerified": true,
+            "packageSignatureVerified": null,
+            "repositorySigningKeyFingerprint": "3BFA0E4AE8B8CC16A2D9BA684A3B4A566C4660E4"
+          },
+          "rpm": {
+            "contentLength": 365320805,
+            "format": "rpm",
+            "mirrorBasename": "chatgpt-26.803.81509-1.aarch64.rpm",
+            "packageArchitecture": "aarch64",
+            "packageName": "chatgpt",
+            "release": "1",
+            "sha256": "290b1f2d0f57a508df23e308a6d0d643063767b684906dfb916ce4b01ecfdac9",
+            "sourceBasename": "chatgpt-26.803.81509-1.aarch64.rpm",
+            "sourcePath": "chatgpt-26.803.81509-1.aarch64.rpm",
+            "url": "https://persistent.oaistatic.com/codex-app-prod/linux/rpm/aarch64/chatgpt-26.803.81509-1.aarch64.rpm",
+            "version": "26.803.81509",
+            "verified": true,
+            "repositoryMetadataSignatureVerified": true,
+            "packageChecksumVerified": true,
+            "embeddedRepositoryKeyVerified": true,
+            "packageSignatureVerified": true,
+            "repositorySigningKeyFingerprint": "3BFA0E4AE8B8CC16A2D9BA684A3B4A566C4660E4"
+          }
+        },
+        "x64": {
+          "deb": {
+            "contentLength": 349937362,
+            "format": "deb",
+            "mirrorBasename": "chatgpt_26.803.81509_amd64.deb",
+            "packageArchitecture": "amd64",
+            "packageName": "chatgpt",
+            "sha256": "a9bf91a368f9f7c4eea38082a9fb8fb46b8d005b719a6d7715d2e5a1982c38eb",
+            "sourceBasename": "chatgpt_26.803.81509_amd64.deb",
+            "sourcePath": "pool/main/c/chatgpt/chatgpt_26.803.81509_amd64.deb",
+            "url": "https://persistent.oaistatic.com/codex-app-prod/linux/deb/pool/main/c/chatgpt/chatgpt_26.803.81509_amd64.deb",
+            "version": "26.803.81509",
+            "verified": true,
+            "repositoryMetadataSignatureVerified": true,
+            "packageChecksumVerified": true,
+            "embeddedRepositoryKeyVerified": true,
+            "packageSignatureVerified": null,
+            "repositorySigningKeyFingerprint": "3BFA0E4AE8B8CC16A2D9BA684A3B4A566C4660E4"
+          },
+          "rpm": {
+            "contentLength": 396388161,
+            "format": "rpm",
+            "mirrorBasename": "chatgpt-26.803.81509-1.x86_64.rpm",
+            "packageArchitecture": "x86_64",
+            "packageName": "chatgpt",
+            "release": "1",
+            "sha256": "4d34fd4bb1122b7f2445f6a1bbc7c869cd3724c9f71aee3802795272c0b10702",
+            "sourceBasename": "chatgpt-26.803.81509-1.x86_64.rpm",
+            "sourcePath": "chatgpt-26.803.81509-1.x86_64.rpm",
+            "url": "https://persistent.oaistatic.com/codex-app-prod/linux/rpm/x86_64/chatgpt-26.803.81509-1.x86_64.rpm",
+            "version": "26.803.81509",
+            "verified": true,
+            "repositoryMetadataSignatureVerified": true,
+            "packageChecksumVerified": true,
+            "embeddedRepositoryKeyVerified": true,
+            "packageSignatureVerified": true,
+            "repositorySigningKeyFingerprint": "3BFA0E4AE8B8CC16A2D9BA684A3B4A566C4660E4"
+          }
+        }
+      },
+      "packageName": "chatgpt",
+      "product": "ChatGPT desktop app with Codex",
+      "supportedDistributions": [
+        "Ubuntu 24.04 LTS",
+        "Ubuntu 26.04 LTS",
+        "Debian 13",
+        "Fedora 43",
+        "Fedora 44"
+      ],
+      "version": "26.803.81509"
+    }
+  },
+  "release": {
+    "tag": "codex-app-linux-preview-26.803.81509",
+    "destination": "github-prerelease",
+    "immutableAssets": true
+  }
+}

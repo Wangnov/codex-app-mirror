@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 6,
+  "channel": "linux-preview",
+  "preview": {"contract": "linux-preview-v1"},
+  "publication": {
+    "githubPrereleaseOnly": true,
+    "githubLatestAdvanced": false,
+    "objectStoragePublished": false,
+    "sharedLatestAdvanced": false
+  },
+  "derived": {"prerelease": true, "publishLatest": false, "syncLatest": false},
+  "release": {"tag": "codex-app-linux-preview-26.803.81509", "destination": "github-prerelease", "immutableAssets": true},
+  "sources": {
+    "linux": {
+      "architectures": {
+        "x64": {
+          "deb": {"mirrorBasename":"chatgpt_26.803.81509_amd64.deb"},
+          "rpm": {"mirrorBasename":"chatgpt-26.803.81509-1.x86_64.rpm"}
+        },
+        "arm64": {
+          "deb": {"mirrorBasename":"chatgpt_26.803.81509_arm64.deb"},
+          "rpm": {"mirrorBasename":"chatgpt-26.803.81509-1.aarch64.rpm"}
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 5,
+  "sources": {
+    "windows": {
+      "version": "1.2.3.4",
+      "packageMoniker": "OpenAI.Codex_1.2.3.4_x64__2p2nqsd0c76g0",
+      "contentLength": 3,
+      "etag": "windows-etag",
+      "architectures": {
+        "x64": {
+          "architecture": "x64",
+          "status": "downloadable",
+          "downloadable": true,
+          "version": "1.2.3.4",
+          "packageMoniker": "OpenAI.Codex_1.2.3.4_x64__2p2nqsd0c76g0",
+          "contentLength": 3,
+          "appVersion": "1.2.3",
+          "backendVersion": "0.1.2",
+          "currentForCodexVersion": true
+        },
+        "arm64": {
+          "architecture": "arm64",
+          "status": "downloadable",
+          "downloadable": true,
+          "version": "1.2.3.4",
+          "packageMoniker": "OpenAI.Codex_1.2.3.4_arm64__2p2nqsd0c76g0",
+          "contentLength": 4,
+          "currentForCodexVersion": true,
+          "currentLocalArtifact": true,
+          "preservedFromLatest": false,
+          "appVersion": "1.2.3",
+          "backendVersion": "0.1.3"
+        }
+      },
+      "appVersion": "1.2.3",
+      "backendVersion": "0.1.2"
+    },
+    "macos": {
+      "arm64": {
+        "contentLength": 3,
+        "etag": "arm64-etag",
+        "appcast": {
+          "shortVersionString": "1.2.3",
+          "version": "6",
+          "enclosureUrl": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT-darwin-arm64-1.2.3.zip",
+          "sourceBasename": "ChatGPT-darwin-arm64-1.2.3.zip",
+          "mirrorEnclosureBasename": "Codex-darwin-arm64-1.2.3.zip"
+        },
+        "bundleShortVersion": "1.2.3",
+        "bundleVersion": "5",
+        "bundleIdentifier": "com.openai.codex",
+        "bundleName": "ChatGPT",
+        "bundleExecutable": "ChatGPT",
+        "teamIdentifier": "2DC432GLL2",
+        "sparklePublicEdKey": "mNfr1v9t63BfgDtlw4C8lRvSY6uMggIXABDOCi3tS6k=",
+        "sparkleArchiveFileName": "Codex-darwin-arm64-1.2.3.zip",
+        "sparkleArchiveBundleShortVersion": "1.2.3",
+        "sparkleArchiveBundleVersion": "6",
+        "sparkleArchiveIdentityVerified": true,
+        "minimumSystemVersion": "12.0",
+        "sha256": "arm64-sha256",
+        "backendVersion": "0.140.1",
+        "downloadable": true,
+        "status": "downloadable",
+        "currentForCodexVersion": true
+      },
+      "x64": {
+        "contentLength": 3,
+        "etag": "x64-etag",
+        "appcast": {
+          "shortVersionString": "1.2.3",
+          "version": "6",
+          "enclosureUrl": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT-darwin-x64-1.2.3.zip",
+          "sourceBasename": "ChatGPT-darwin-x64-1.2.3.zip",
+          "mirrorEnclosureBasename": "Codex-darwin-x64-1.2.3.zip"
+        },
+        "bundleShortVersion": "1.2.3",
+        "bundleVersion": "5",
+        "bundleIdentifier": "com.openai.codex",
+        "bundleName": "ChatGPT",
+        "bundleExecutable": "ChatGPT",
+        "teamIdentifier": "2DC432GLL2",
+        "sparklePublicEdKey": "mNfr1v9t63BfgDtlw4C8lRvSY6uMggIXABDOCi3tS6k=",
+        "sparkleArchiveFileName": "Codex-darwin-x64-1.2.3.zip",
+        "sparkleArchiveBundleShortVersion": "1.2.3",
+        "sparkleArchiveBundleVersion": "6",
+        "sparkleArchiveIdentityVerified": true,
+        "minimumSystemVersion": "12.0",
+        "sha256": "x64-sha256",
+        "backendVersion": "0.140.2",
+        "downloadable": true,
+        "status": "downloadable",
+        "currentForCodexVersion": true
+      }
+    }
+  },
+  "codexVersion": "1.2.3",
+  "publishedAt": "2026-09-28T19:10:18Z",
+  "derived": {
+    "codexVersion": "1.2.3",
+    "platformCompleteness": "complete",
+    "includeWindows": true,
+    "includeMacos": true,
+    "includeWindowsX64": true,
+    "includeWindowsArm64": true,
+    "includeMacosArm64": true,
+    "includeMacosX64": true,
+    "prerelease": false,
+    "publishLatest": true,
+    "syncLatest": true,
+    "windowsPackageVersion": "1.2.3.4",
+    "windowsAppVersion": "1.2.3",
+    "windowsBackendVersion": "0.1.2",
+    "windowsArm64AppVersion": "1.2.3",
+    "windowsArm64BackendVersion": "0.1.3",
+    "macosCommonShortVersion": "1.2.3",
+    "macosCommonBundleVersion": "5",
+    "macosVersionsMatch": true,
+    "macosArm64BackendVersion": "0.140.1",
+    "macosX64BackendVersion": "0.140.2",
+    "missingPlatforms": [],
+    "missingArchitectures": [],
+    "latestChecksums": {
+      "Codex-darwin-arm64-1.2.3.zip": "bc7d96bc60ae4f594f04a39996e2c57422cd432c0fc8395bd5688f84394dbad2",
+      "Codex-darwin-x64-1.2.3.zip": "d826c30621ece4de48237ba9e0ef16ebfabf13aa33366dcb0f47e8a8663bb982",
+      "Codex-mac-arm64.dmg": "ddf7ff5ebd9d66ce161466c1c0262430fa04de32b0e420ee3f489e2e2112e386",
+      "Codex-mac-x64.dmg": "5609f728403e197bb255ef50c62aeabb1f93b09f7b7c379903440b65cd4319cb",
+      "OpenAI.Codex_1.2.3.4_arm64__2p2nqsd0c76g0.Msix": "063edc823b4d80c246671f27d50df44e859c486be3a9070b03db17ef3c132e8a",
+      "OpenAI.Codex_1.2.3.4_x64__2p2nqsd0c76g0.Msix": "063edc823b4d80c246671f27d50df44e859c486be3a9070b03db17ef3c132e8a"
+    }
+  }
+}

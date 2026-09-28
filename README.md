@@ -103,7 +103,7 @@ Linux Preview 是显式隔离的第三通道：`stable | beta | linux-preview`�
 | 校验和 | <https://codexapp.agentsmirror.com/latest/checksums> |
 | Release 指纹 | <https://codexapp.agentsmirror.com/latest/manifest> |
 
-需要**历史版本**时，到 [GitHub Releases](https://github.com/Wangnov/codex-app-mirror/releases) 按 release/tag 查找；短链只指向最新版。建议同时下载 `SHA256SUMS.txt` 核对文件完整性。
+需要**历史版本**时，到 [GitHub Releases](https://github.com/Wangnov/codex-app-mirror/releases) 按 release/tag 查找；短链只指向最新版。建议同时下载 `SHA256SUMS.txt` 核对文件完整性。`release-manifest.json` 的机器可校验契约见 [`docs/manifest-schema.md`](docs/manifest-schema.md)（[JSON Schema](schemas/release-manifest.schema.json)）。
 
 ## macOS 自动更新
 
@@ -295,7 +295,7 @@ Or use the CDN short links (recommended — **auto-routed to the fastest node**:
 | Checksums | <https://codexapp.agentsmirror.com/latest/checksums> |
 | Release manifest | <https://codexapp.agentsmirror.com/latest/manifest> |
 
-For **older versions**, browse [GitHub Releases](https://github.com/Wangnov/codex-app-mirror/releases) by release/tag — the short links only point at the latest. Download `SHA256SUMS.txt` too if you want to verify integrity.
+For **older versions**, browse [GitHub Releases](https://github.com/Wangnov/codex-app-mirror/releases) by release/tag — the short links only point at the latest. Download `SHA256SUMS.txt` too if you want to verify integrity. The machine-checkable contract for `release-manifest.json` lives in [`docs/manifest-schema.md`](docs/manifest-schema.md) ([JSON Schema](schemas/release-manifest.schema.json)).
 
 ## macOS auto-update
 

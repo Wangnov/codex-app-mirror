@@ -113,6 +113,17 @@ jobs:
             "${{ inputs.expected_linux_version }}" \
             "$RELEASE_TAG"
 
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Validate release-manifest.json against schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --prefix scripts/schema
+          node scripts/schema/validate.js schemas/release-manifest.schema.json release-manifest.json
+
       - name: Publish GitHub prerelease without moving GitHub Latest
         env:
           GH_TOKEN: ${{ github.token }}

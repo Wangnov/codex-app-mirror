@@ -1,0 +1,387 @@
+{
+  "schemaVersion": 5,
+  "generatedAt": "2026-09-28T15:07:35Z",
+  "sources": {
+    "windows": {
+      "productId": "9PLM9XGG6VKS",
+      "architecture": "x64",
+      "version": "26.924.2738.0",
+      "packageMoniker": "OpenAI.Codex_26.924.2738.0_x64__2p2nqsd0c76g0",
+      "urlHost": "http://tlu.dl.delivery.mp.microsoft.com",
+      "updateManifestUrl": "https://persistent.oaistatic.com/codex-app-prod/windows-store-update.json",
+      "updateManifest": {
+        "buildVersion": "26.924.2738.0",
+        "storeProductId": "9PLM9XGG6VKS",
+        "packageIdentity": "OpenAI.Codex"
+      },
+      "contentLength": 876623361,
+      "lastModified": "Sat, 26 Sep 2026 07:36:53 GMT",
+      "etag": "\"RDtX8UxZPoLu9xeMlxFAaXoLMBk=\"",
+      "architectures": {
+        "x64": {
+          "architecture": "x64",
+          "status": "downloadable",
+          "downloadable": true,
+          "version": "26.924.2738.0",
+          "packageMoniker": "OpenAI.Codex_26.924.2738.0_x64__2p2nqsd0c76g0",
+          "urlHost": "http://tlu.dl.delivery.mp.microsoft.com",
+          "contentLength": 876623361,
+          "lastModified": "Sat, 26 Sep 2026 07:36:53 GMT",
+          "etag": "\"RDtX8UxZPoLu9xeMlxFAaXoLMBk=\"",
+          "catalog": {
+            "packageFullName": "OpenAI.Codex_26.924.2738.0_x64__2p2nqsd0c76g0",
+            "packageId": "faf479ec-26e8-b76d-6670-d13ec5c28a42-X64",
+            "contentId": "cd8fa55e-404a-92d6-2fac-efd9c26161dc",
+            "packageFamilyName": "OpenAI.Codex_2p2nqsd0c76g0",
+            "hashAlgorithm": "SHA256",
+            "hash": "EyQxom/k3kTR+jxuFIUG27TI2Aba1Az9SOPtVU8nVaI=",
+            "contentLength": 876623361
+          },
+          "appVersion": "26.924.22138",
+          "backendVersion": "0.158.0-alpha.2.1",
+          "currentForCodexVersion": true
+        },
+        "arm64": {
+          "architecture": "arm64",
+          "status": "downloadable",
+          "downloadable": true,
+          "version": "26.924.2738.0",
+          "packageMoniker": "OpenAI.Codex_26.924.2738.0_arm64__2p2nqsd0c76g0",
+          "urlHost": "http://tlu.dl.delivery.mp.microsoft.com",
+          "contentLength": 870865036,
+          "lastModified": "Sat, 26 Sep 2026 07:36:53 GMT",
+          "etag": "\"AIzJx4/ZrNYdXRh9A+bV+9nA37A=\"",
+          "catalog": {
+            "packageFullName": "OpenAI.Codex_26.924.2738.0_arm64__2p2nqsd0c76g0",
+            "packageId": "66cd6c79-ebe8-1d28-0ee2-25a9113eb83a-Arm64",
+            "contentId": "cd8fa55e-404a-92d6-2fac-efd9c26161dc",
+            "packageFamilyName": "OpenAI.Codex_2p2nqsd0c76g0",
+            "hashAlgorithm": "SHA256",
+            "hash": "4yBYwbgzYEegLUV/cggehske8oKCri5Np3F239RT42Y=",
+            "contentLength": 870865036
+          },
+          "currentForCodexVersion": true,
+          "currentLocalArtifact": true,
+          "preservedFromLatest": false,
+          "appVersion": "26.924.22138",
+          "backendVersion": "0.158.0-alpha.2.1"
+        }
+      },
+      "appVersion": "26.924.22138",
+      "backendVersion": "0.158.0-alpha.2.1"
+    },
+    "macos": {
+      "arm64": {
+        "url": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT-26.924.22138-arm64.dmg",
+        "appcastUrl": "https://persistent.oaistatic.com/codex-app-prod/appcast.xml",
+        "appcast": {
+          "deltas": [
+            {
+              "attributes": {
+                "length": "20592338",
+                "sparkle:deltaFrom": "11431",
+                "sparkle:deltaFromSparkleExecutableSize": "979904",
+                "sparkle:deltaFromSparkleLocales": "de,ar,el,ja,fa,uk,zh_CN",
+                "sparkle:edSignature": "gl0uViwwOC0yaFJbKeU10Gxlnj9j77q/xSWTDpmInpzNsAJLHO9Ca+jSRFSTGuyLV3S/FEwqDXL8cwXcNotODg==",
+                "type": "application/octet-stream",
+                "url": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT11645-11431-arm64.delta"
+              },
+              "basename": "ChatGPT11645-11431-arm64.delta",
+              "deltaFrom": "11431",
+              "edSignature": "gl0uViwwOC0yaFJbKeU10Gxlnj9j77q/xSWTDpmInpzNsAJLHO9Ca+jSRFSTGuyLV3S/FEwqDXL8cwXcNotODg==",
+              "length": 20592338,
+              "os": "",
+              "type": "application/octet-stream",
+              "url": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT11645-11431-arm64.delta",
+              "version": ""
+            },
+            {
+              "attributes": {
+                "length": "146063722",
+                "sparkle:deltaFrom": "10954",
+                "sparkle:deltaFromSparkleExecutableSize": "979904",
+                "sparkle:deltaFromSparkleLocales": "de,ar,el,ja,fa,uk,zh_CN",
+                "sparkle:edSignature": "cuilj9/Tndl8Hno1pMdsKeN7QbAUkihBVs+GXwqBVgHB4pK4g9wEVetHL1UQjOuX9IFOMDP+YI3Uze/P7vjFBw==",
+                "type": "application/octet-stream",
+                "url": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT11645-10954-arm64.delta"
+              },
+              "basename": "ChatGPT11645-10954-arm64.delta",
+              "deltaFrom": "10954",
+              "edSignature": "cuilj9/Tndl8Hno1pMdsKeN7QbAUkihBVs+GXwqBVgHB4pK4g9wEVetHL1UQjOuX9IFOMDP+YI3Uze/P7vjFBw==",
+              "length": 146063722,
+              "os": "",
+              "type": "application/octet-stream",
+              "url": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT11645-10954-arm64.delta",
+              "version": ""
+            },
+            {
+              "attributes": {
+                "length": "146053298",
+                "sparkle:deltaFrom": "10789",
+                "sparkle:deltaFromSparkleExecutableSize": "979904",
+                "sparkle:deltaFromSparkleLocales": "de,ar,el,ja,fa,uk,zh_CN",
+                "sparkle:edSignature": "z4ltrTtdWQ/PfDPl/xoghXNsbZni2BgR9dFTRuhCG0wqOemZaRKXlnz62pRlj11ucb/zptSBLOgvufxxCOh2Dw==",
+                "type": "application/octet-stream",
+                "url": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT11645-10789-arm64.delta"
+              },
+              "basename": "ChatGPT11645-10789-arm64.delta",
+              "deltaFrom": "10789",
+              "edSignature": "z4ltrTtdWQ/PfDPl/xoghXNsbZni2BgR9dFTRuhCG0wqOemZaRKXlnz62pRlj11ucb/zptSBLOgvufxxCOh2Dw==",
+              "length": 146053298,
+              "os": "",
+              "type": "application/octet-stream",
+              "url": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT11645-10789-arm64.delta",
+              "version": ""
+            },
+            {
+              "attributes": {
+                "length": "146197758",
+                "sparkle:deltaFrom": "10640",
+                "sparkle:deltaFromSparkleExecutableSize": "979904",
+                "sparkle:deltaFromSparkleLocales": "de,ar,el,ja,fa,uk,zh_CN",
+                "sparkle:edSignature": "awbCGNMK54bX/Yfj7Q9Z4IDQPIikrdE0ydFI6hFLY/mJ8r6uioviKJ0MgLw7MQttw6uh6euNny6W7qA4gY2kAg==",
+                "type": "application/octet-stream",
+                "url": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT11645-10640-arm64.delta"
+              },
+              "basename": "ChatGPT11645-10640-arm64.delta",
+              "deltaFrom": "10640",
+              "edSignature": "awbCGNMK54bX/Yfj7Q9Z4IDQPIikrdE0ydFI6hFLY/mJ8r6uioviKJ0MgLw7MQttw6uh6euNny6W7qA4gY2kAg==",
+              "length": 146197758,
+              "os": "",
+              "type": "application/octet-stream",
+              "url": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT11645-10640-arm64.delta",
+              "version": ""
+            },
+            {
+              "attributes": {
+                "length": "146126046",
+                "sparkle:deltaFrom": "10492",
+                "sparkle:deltaFromSparkleExecutableSize": "979904",
+                "sparkle:deltaFromSparkleLocales": "de,ar,el,ja,fa,uk,zh_CN",
+                "sparkle:edSignature": "MQC1zHdG+9+imvetp24vQgul+/WPLH1DRHzPWqxOZow+cpieJx+Z2usy7g9fAk/INab4Xz7BT6mBUlnEdN4MBw==",
+                "type": "application/octet-stream",
+                "url": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT11645-10492-arm64.delta"
+              },
+              "basename": "ChatGPT11645-10492-arm64.delta",
+              "deltaFrom": "10492",
+              "edSignature": "MQC1zHdG+9+imvetp24vQgul+/WPLH1DRHzPWqxOZow+cpieJx+Z2usy7g9fAk/INab4Xz7BT6mBUlnEdN4MBw==",
+              "length": 146126046,
+              "os": "",
+              "type": "application/octet-stream",
+              "url": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT11645-10492-arm64.delta",
+              "version": ""
+            }
+          ],
+          "enclosureLength": 653348759,
+          "enclosureSignature": "2aBRQyUSMygdAXKBkd86MP3C81Cz6WEIcUhcPBfd5Ow9Jsnw0p1wn3/FwxiCh+ZcRyED3PO1sXKUlUdDylr5Bw==",
+          "enclosureUrl": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT-darwin-arm64-26.924.22138.zip",
+          "hardwareRequirements": "arm64",
+          "minimumSystemVersion": "13.0",
+          "pubDate": "Sat, 26 Sep 2026 07:14:31 +0000",
+          "shortVersionString": "26.924.22138",
+          "sourceBasename": "ChatGPT-darwin-arm64-26.924.22138.zip",
+          "title": "26.924.22138",
+          "version": "11645",
+          "mirrorEnclosureBasename": "Codex-darwin-arm64-26.924.22138.zip"
+        },
+        "contentLength": 710245920,
+        "lastModified": "Sat, 26 Sep 2026 07:16:16 GMT",
+        "etag": "\"0x8DF1B9E0E357E1B\"",
+        "bundleShortVersion": "26.924.22138",
+        "bundleVersion": "11645",
+        "bundleIdentifier": "com.openai.codex",
+        "bundleName": "ChatGPT",
+        "bundleExecutable": "ChatGPT",
+        "teamIdentifier": "2DC432GLL2",
+        "sparklePublicEdKey": "mNfr1v9t63BfgDtlw4C8lRvSY6uMggIXABDOCi3tS6k=",
+        "sparkleArchiveFileName": "Codex-darwin-arm64-26.924.22138.zip",
+        "sparkleArchiveBundleShortVersion": "26.924.22138",
+        "sparkleArchiveBundleVersion": "11645",
+        "sparkleArchiveIdentityVerified": true,
+        "minimumSystemVersion": "13.0",
+        "sha256": "353c802b5a373dda256d661a5cf82be4cfadf14ccc2befd067b709392dc48e5c",
+        "downloadable": true,
+        "status": "downloadable",
+        "currentForCodexVersion": true
+      },
+      "x64": {
+        "url": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT-26.924.22138-x64.dmg",
+        "appcastUrl": "https://persistent.oaistatic.com/codex-app-prod/appcast-x64.xml",
+        "appcast": {
+          "deltas": [
+            {
+              "attributes": {
+                "length": "21876426",
+                "sparkle:deltaFrom": "11431",
+                "sparkle:deltaFromSparkleExecutableSize": "979904",
+                "sparkle:deltaFromSparkleLocales": "de,ar,el,ja,fa,uk,zh_CN",
+                "sparkle:edSignature": "hcwEnsxwrb4jxjdO4FTiyjxFx3ows/S/5QOR4N4B03vAo99Yv8nsxwzWXBR8KvNHG78l6GIgZrtmaX+6x7HQBQ==",
+                "type": "application/octet-stream",
+                "url": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT11645-11431-x64.delta"
+              },
+              "basename": "ChatGPT11645-11431-x64.delta",
+              "deltaFrom": "11431",
+              "edSignature": "hcwEnsxwrb4jxjdO4FTiyjxFx3ows/S/5QOR4N4B03vAo99Yv8nsxwzWXBR8KvNHG78l6GIgZrtmaX+6x7HQBQ==",
+              "length": 21876426,
+              "os": "",
+              "type": "application/octet-stream",
+              "url": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT11645-11431-x64.delta",
+              "version": ""
+            },
+            {
+              "attributes": {
+                "length": "149069122",
+                "sparkle:deltaFrom": "10954",
+                "sparkle:deltaFromSparkleExecutableSize": "979904",
+                "sparkle:deltaFromSparkleLocales": "de,ar,el,ja,fa,uk,zh_CN",
+                "sparkle:edSignature": "bhXcO5ZC4vEJacJx+ehb4jqz4Gr8dD8XAjgbWFx3A18oN6GAzLF/RA6wgwLDyw4UdRnObDHvrY1xmvjeFlWPAA==",
+                "type": "application/octet-stream",
+                "url": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT11645-10954-x64.delta"
+              },
+              "basename": "ChatGPT11645-10954-x64.delta",
+              "deltaFrom": "10954",
+              "edSignature": "bhXcO5ZC4vEJacJx+ehb4jqz4Gr8dD8XAjgbWFx3A18oN6GAzLF/RA6wgwLDyw4UdRnObDHvrY1xmvjeFlWPAA==",
+              "length": 149069122,
+              "os": "",
+              "type": "application/octet-stream",
+              "url": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT11645-10954-x64.delta",
+              "version": ""
+            },
+            {
+              "attributes": {
+                "length": "148972866",
+                "sparkle:deltaFrom": "10789",
+                "sparkle:deltaFromSparkleExecutableSize": "979904",
+                "sparkle:deltaFromSparkleLocales": "de,ar,el,ja,fa,uk,zh_CN",
+                "sparkle:edSignature": "Nx9xPcb9oa/SmORpmGaW0/ZtPKbZOuYp76e7gNCNQ1BjElDV4A9k2Mw3dONOibjD8ZUMVNtOxHGN7ch6lyTxDA==",
+                "type": "application/octet-stream",
+                "url": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT11645-10789-x64.delta"
+              },
+              "basename": "ChatGPT11645-10789-x64.delta",
+              "deltaFrom": "10789",
+              "edSignature": "Nx9xPcb9oa/SmORpmGaW0/ZtPKbZOuYp76e7gNCNQ1BjElDV4A9k2Mw3dONOibjD8ZUMVNtOxHGN7ch6lyTxDA==",
+              "length": 148972866,
+              "os": "",
+              "type": "application/octet-stream",
+              "url": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT11645-10789-x64.delta",
+              "version": ""
+            },
+            {
+              "attributes": {
+                "length": "148987070",
+                "sparkle:deltaFrom": "10640",
+                "sparkle:deltaFromSparkleExecutableSize": "979904",
+                "sparkle:deltaFromSparkleLocales": "de,ar,el,ja,fa,uk,zh_CN",
+                "sparkle:edSignature": "XfuBpIFNeiKQEnHNfXrP+mUQ4U+KNk/JzNDAVCcys0i0BPaaJfZtszMV+5t5IZH34W9Bb4Nj9Tv1xRK4pU41CQ==",
+                "type": "application/octet-stream",
+                "url": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT11645-10640-x64.delta"
+              },
+              "basename": "ChatGPT11645-10640-x64.delta",
+              "deltaFrom": "10640",
+              "edSignature": "XfuBpIFNeiKQEnHNfXrP+mUQ4U+KNk/JzNDAVCcys0i0BPaaJfZtszMV+5t5IZH34W9Bb4Nj9Tv1xRK4pU41CQ==",
+              "length": 148987070,
+              "os": "",
+              "type": "application/octet-stream",
+              "url": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT11645-10640-x64.delta",
+              "version": ""
+            },
+            {
+              "attributes": {
+                "length": "149091630",
+                "sparkle:deltaFrom": "10492",
+                "sparkle:deltaFromSparkleExecutableSize": "979904",
+                "sparkle:deltaFromSparkleLocales": "de,ar,el,ja,fa,uk,zh_CN",
+                "sparkle:edSignature": "V4Fw50bynM0M79Y4ew2n8Oz7LysXLZoSoDSRXFQWx0YH3j/bCI1YEE+XSM7iAmEXE3m6qd/m76sW5dzyz1zyDQ==",
+                "type": "application/octet-stream",
+                "url": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT11645-10492-x64.delta"
+              },
+              "basename": "ChatGPT11645-10492-x64.delta",
+              "deltaFrom": "10492",
+              "edSignature": "V4Fw50bynM0M79Y4ew2n8Oz7LysXLZoSoDSRXFQWx0YH3j/bCI1YEE+XSM7iAmEXE3m6qd/m76sW5dzyz1zyDQ==",
+              "length": 149091630,
+              "os": "",
+              "type": "application/octet-stream",
+              "url": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT11645-10492-x64.delta",
+              "version": ""
+            }
+          ],
+          "enclosureLength": 640430436,
+          "enclosureSignature": "CuRtJlNt45it+R8ncccFT0SQNHFRiL3dyaerM2cZCK/DOLU+N6ELidRILHVbJ6K5IX5N8eZ27FJEypZ9nXRVBw==",
+          "enclosureUrl": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT-darwin-x64-26.924.22138.zip",
+          "hardwareRequirements": "",
+          "minimumSystemVersion": "13.0",
+          "pubDate": "Sat, 26 Sep 2026 07:14:39 +0000",
+          "shortVersionString": "26.924.22138",
+          "sourceBasename": "ChatGPT-darwin-x64-26.924.22138.zip",
+          "title": "26.924.22138",
+          "version": "11645",
+          "mirrorEnclosureBasename": "Codex-darwin-x64-26.924.22138.zip"
+        },
+        "contentLength": 699917615,
+        "lastModified": "Sat, 26 Sep 2026 07:16:34 GMT",
+        "etag": "\"0x8DF1B9E18EFD234\"",
+        "bundleShortVersion": "26.924.22138",
+        "bundleVersion": "11645",
+        "bundleIdentifier": "com.openai.codex",
+        "bundleName": "ChatGPT",
+        "bundleExecutable": "ChatGPT",
+        "teamIdentifier": "2DC432GLL2",
+        "sparklePublicEdKey": "mNfr1v9t63BfgDtlw4C8lRvSY6uMggIXABDOCi3tS6k=",
+        "sparkleArchiveFileName": "Codex-darwin-x64-26.924.22138.zip",
+        "sparkleArchiveBundleShortVersion": "26.924.22138",
+        "sparkleArchiveBundleVersion": "11645",
+        "sparkleArchiveIdentityVerified": true,
+        "minimumSystemVersion": "13.0",
+        "sha256": "fc65262ed9f40c4c5282be772623266afcf1b2a3819d5b4af6db06b2fe722f46",
+        "downloadable": true,
+        "status": "downloadable",
+        "currentForCodexVersion": true
+      }
+    }
+  },
+  "codexVersion": "26.924.22138",
+  "publishedAt": "2026-09-28T15:21:48Z",
+  "derived": {
+    "codexVersion": "26.924.22138",
+    "platformCompleteness": "complete",
+    "includeWindows": true,
+    "includeMacos": true,
+    "includeWindowsX64": true,
+    "includeWindowsArm64": true,
+    "includeMacosArm64": true,
+    "includeMacosX64": true,
+    "prerelease": false,
+    "publishLatest": true,
+    "syncLatest": true,
+    "windowsPackageVersion": "26.924.2738.0",
+    "windowsAppVersion": "26.924.22138",
+    "windowsBackendVersion": "0.158.0-alpha.2.1",
+    "windowsArm64AppVersion": "26.924.22138",
+    "windowsArm64BackendVersion": "0.158.0-alpha.2.1",
+    "macosCommonShortVersion": "26.924.22138",
+    "macosCommonBundleVersion": "11645",
+    "macosVersionsMatch": true,
+    "macosArm64BackendVersion": "",
+    "macosX64BackendVersion": "",
+    "missingPlatforms": [],
+    "missingArchitectures": [],
+    "latestChecksums": {
+      "ChatGPT11645-10492-arm64.delta": "06a069144ed542af59132e469686a768ed6a11aafa19d4d192263b2dec88a07e",
+      "ChatGPT11645-10492-x64.delta": "88121b475f1cf7fa86d9d62c1ad9c3e327182c731bbecdda75b741f7a7ff25ef",
+      "ChatGPT11645-10640-arm64.delta": "23018f8353d9fabdbd123e6c1a9c4222fbf214dcf741be8d8c677baf17b11447",
+      "ChatGPT11645-10640-x64.delta": "5948f53e26f406147812fe07f6f2c8723310a565f5e145782e8505987bdc68f8",
+      "ChatGPT11645-10789-arm64.delta": "4ee21a0c5e93546a1b53d8b4a44566c7127373f25cabbe4b397f83ca0046e74c",
+      "ChatGPT11645-10789-x64.delta": "01664a7be3b786954a984bb1461cc2e4f11485a6fe92f41ac0bba8b626423b0f",
+      "ChatGPT11645-10954-arm64.delta": "55f1f06cb5a4be0c865dada09bcfccd80cbf2fb776a83923bb03eea8b3ff9522",
+      "ChatGPT11645-10954-x64.delta": "d95551b61e68af579fefd37b542bdb2cd510d856be15c239cd0818124422c907",
+      "ChatGPT11645-11431-arm64.delta": "445ea8ea9c5fbc9ba9f7012714d6338bab410e74112adcb7ad6fef171d21281d",
+      "ChatGPT11645-11431-x64.delta": "2d9150018697dba1da71c8646f2648c67792c2a2090b2da0cdbd1603e3dd72ac",
+      "Codex-darwin-arm64-26.924.22138.zip": "7cf9569b116a32af61a6ab4e9979466774b6dc8e9dbcf70264596a1ae2dfd57d",
+      "Codex-darwin-x64-26.924.22138.zip": "ca5fec21151e8a3fc3bb3890f76ebac6b497856a393b70b1fcd6e8af6bd7b6bc",
+      "Codex-mac-arm64.dmg": "353c802b5a373dda256d661a5cf82be4cfadf14ccc2befd067b709392dc48e5c",
+      "Codex-mac-x64.dmg": "fc65262ed9f40c4c5282be772623266afcf1b2a3819d5b4af6db06b2fe722f46",
+      "OpenAI.Codex_26.924.2738.0_arm64__2p2nqsd0c76g0.Msix": "e32058c1b8336047a02d457f72081e86c91ef28282ae2e4da77176dfd453e366",
+      "OpenAI.Codex_26.924.2738.0_x64__2p2nqsd0c76g0.Msix": "132431a26fe4de44d1fa3c6e148506dbb4c8d806dad40cfd48e3ed554f2755a2"
+    }
+  }
+}

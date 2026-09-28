@@ -140,6 +140,12 @@ jobs:
           npm ci --prefix cloudflare/secondary-sync
           npm run check --prefix cloudflare/secondary-sync
 
+      - name: Validate release-manifest.json schema and fixtures
+        shell: bash
+        run: |
+          npm ci --prefix scripts/schema
+          scripts/test-release-manifest-schema.sh
+
       - name: Test appcast generation fixture
         shell: bash
         run: scripts/test-build-appcast.sh
