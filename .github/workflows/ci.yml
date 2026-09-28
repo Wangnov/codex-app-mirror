@@ -156,6 +156,10 @@ jobs:
         shell: bash
         run: scripts/test-prepare-windows-portable.sh
 
+      - name: Test Store package resolver ARM64 baseline fixture
+        shell: bash
+        run: scripts/test-store-link-arm64-baseline.sh
+
       - name: Build Microsoft Store resolver
         run: dotnet build scripts/store-link/StoreLink.csproj --configuration Release
 
