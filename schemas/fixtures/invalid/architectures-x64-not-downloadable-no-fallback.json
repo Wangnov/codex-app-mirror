@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 5,
+  "generatedAt": "2026-09-28T15:07:35Z",
+  "sources": {
+    "windows": {
+      "architectures": {
+        "x64": {
+          "architecture": "x64",
+          "status": "catalog-only",
+          "downloadable": false
+        }
+      }
+    },
+    "macos": {
+      "arm64": { "bundleShortVersion": "1.2.3", "bundleVersion": "5" },
+      "x64": { "bundleShortVersion": "1.2.3", "bundleVersion": "5" }
+    }
+  },
+  "codexVersion": "1.2.3",
+  "publishedAt": "2026-09-28T19:10:20Z"
+}

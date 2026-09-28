@@ -102,7 +102,19 @@
         {
           "required": ["architectures"],
           "properties": {
-            "architectures": { "type": "object", "required": ["x64"] }
+            "architectures": {
+              "type": "object",
+              "required": ["x64"],
+              "properties": {
+                "x64": {
+                  "description": "select_architecture() treats an x64 entry with downloadable explicitly false as a hard error (it does not fall back to a different architecture or to Ok(None)), so unlike a generic windowsArchitectureSource entry, this branch only accepts an x64 entry that isn't explicitly marked non-downloadable; a downloadable:false x64 entry only validates via the top-level packageMoniker+version fallback branch above.",
+                  "not": {
+                    "properties": { "downloadable": { "const": false } },
+                    "required": ["downloadable"]
+                  }
+                }
+              }
+            }
           }
         }
       ]

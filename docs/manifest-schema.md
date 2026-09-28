@@ -47,7 +47,11 @@ Structure:
   specific one, and only looks up that one key — it never falls back to a different
   architecture's entry (e.g. an `arm64`-only `architectures` map does **not** satisfy this
   requirement, even though it's a non-empty map, because the default x64 parse path would
-  still fail with `"missing Windows version"`).
+  still fail with `"missing Windows version"`). The `architectures.x64` branch additionally
+  rejects an `x64` entry with `downloadable: false`: `select_architecture()` treats that
+  shape as a hard error (`"Windows x64 package is not available in the current mirror
+  manifest"`), not as a fallback to Ok(None) or to another architecture, so it only
+  satisfies this requirement together with a fully-populated top-level fallback.
 - Each `sources.windows.architectures.<arch>` entry (`$defs/windowsArchitectureSource`)
   requires `version` and `packageMoniker` **unless** `downloadable` is explicitly `false`
   (catalog-only, rollout-drift, or version-unreadable states legitimately omit or stale
