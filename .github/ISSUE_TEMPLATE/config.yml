@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Codex 使用问题 / Codex usage questions
+    url: https://github.com/Wangnov/codex-app-mirror/discussions/categories/q-a
+    about: 登录、模型、审批、插件等 Codex 本身的用法问题请在 Discussions 提问。 Ask how-to questions about Codex itself in Discussions.
+  - name: Codex App Manager 问题 / Codex App Manager issues
+    url: https://github.com/Wangnov/Codex-App-Manager/issues
+    about: 用 Manager 安装、更新、启动时遇到的问题请提到 Manager 仓库。 Problems installing, updating or launching through the Manager belong in its repository.

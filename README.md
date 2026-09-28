@@ -182,6 +182,23 @@ OpenAI.Codex_<version>_arm64__2p2nqsd0c76g0.Msix
 - 需要看更详细错误时，可以在管理员终端里运行：`Add-AppxPackage -Path .\OpenAI.Codex_..._x64__2p2nqsd0c76g0.Msix`
 - 如果这是公司、学校或其他受组织策略管理的设备，需要联系设备管理员放行；本镜像不会也不能绕过这些本机安装策略。
 
+## Windows：Codex 26.915 起安装要管理员权限，便携版要从启动器打开
+
+从 Codex `26.915.31029`（MSIX `26.915.3509.0`）开始，官方 Windows 包有两处变化。它们都由上游包本身决定，镜像只做原样分发。
+
+**1. 安装 MSIX 需要管理员权限。** 包清单新增了 `packagedServices` / `localSystemServices` 能力，并注册了一个以 LocalSystem 身份自动启动的系统服务 `CodexSandboxService.OpenAI.Codex`。带系统服务的 MSIX 只能由管理员安装，所以以前不用提权的电脑现在也会被要求管理员权限。
+
+- 有管理员权限：照常双击 `.Msix`，或在管理员终端运行 `Add-AppxPackage`。
+- 没有管理员权限（公司、学校电脑）：用 [Codex App Manager](https://github.com/Wangnov/Codex-App-Manager) 的**便携安装**。便携模式不注册这个系统服务，也不需要提权。
+
+**2. 便携版直接双击 `ChatGPT.exe` 会报「该进程没有程序包标识符」或「ChatGPT failed to start」。** 新版官方 `ChatGPT.exe` 的默认启动路径需要 MSIX 包身份，而解包后的目录没有这个身份。Manager 在便携安装目录里放了一个原生启动器，请从下面任一入口启动：
+
+- Manager 里的「启动 Codex」按钮；
+- 开始菜单里的 **Codex** 快捷方式；
+- 安装目录里的 `LaunchCodex.exe`（和 `ChatGPT.exe` 在同一个目录）。
+
+启动器只给子进程指定随包自带的 CLI，不修改官方 `ChatGPT.exe` 和 `app.asar`。如果便携版是旧版 Manager 装的，请把 Manager 更新到 v0.5.8 或更高版本，再从 Manager 启动一次，它会补上启动器和开始菜单快捷方式。
+
 ## 上游来源
 
 macOS DMG 使用 OpenAI Codex 桌面安装器的官方静态地址，并以官方 appcast 锁定版本：
@@ -347,6 +364,23 @@ If double-clicking the `.Msix` shows "This app has been blocked by your system a
 - On a personal PC, check that Windows allows apps from outside the Store and that App Installer is available.
 - For a detailed error, run from an elevated terminal: `Add-AppxPackage -Path .\OpenAI.Codex_..._x64__2p2nqsd0c76g0.Msix`
 - On managed (work/school) devices, ask the administrator to allow the install. This mirror does not and cannot bypass local install policies.
+
+## Windows: from Codex 26.915, MSIX needs admin and portable installs start from the launcher
+
+Starting with Codex `26.915.31029` (MSIX `26.915.3509.0`), the official Windows package changed in two ways. Both come from the upstream package itself; this mirror only redistributes it verbatim.
+
+**1. Installing the MSIX requires administrator rights.** The package manifest now declares the `packagedServices` / `localSystemServices` capabilities and registers an auto-start service running as LocalSystem, `CodexSandboxService.OpenAI.Codex`. Windows only lets administrators install MSIX packages that carry services, so machines that never needed elevation before now ask for it.
+
+- With admin rights: double-click the `.Msix` as before, or run `Add-AppxPackage` from an elevated terminal.
+- Without admin rights (work or school PCs): use the **portable install** in [Codex App Manager](https://github.com/Wangnov/Codex-App-Manager). Portable mode does not register that service and needs no elevation.
+
+**2. Double-clicking `ChatGPT.exe` in a portable install fails with "The process has no package identity" or "ChatGPT failed to start".** The new official `ChatGPT.exe` needs an MSIX package identity on its default startup path, and an extracted folder has none. The Manager places a native launcher in the portable install folder; start Codex from any of these:
+
+- the "Launch Codex" button in the Manager;
+- the **Codex** shortcut in the Start menu;
+- `LaunchCodex.exe` in the install folder (next to `ChatGPT.exe`).
+
+The launcher only points the child process at the CLI bundled with the payload; it does not modify the official `ChatGPT.exe` or `app.asar`. If an older Manager created the portable install, update the Manager to v0.5.8 or later and launch Codex from it once; it adds the launcher and the Start menu shortcut.
 
 ## Upstream sources
 

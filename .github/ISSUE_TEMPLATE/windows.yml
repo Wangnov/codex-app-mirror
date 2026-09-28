@@ -1,0 +1,51 @@
+name: Windows 安装 / 启动问题 · Windows install or launch problem
+description: MSIX 装不上、打不开，或提示需要管理员权限。 The MSIX will not install or start, or asks for administrator rights.
+labels: ["windows"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        先看 README 的 [Codex 26.915 起的 Windows 变化](https://github.com/Wangnov/codex-app-mirror#windowscodex-26915-起安装要管理员权限便携版要从启动器打开)：需要管理员权限、「该进程没有程序包标识符」都在那里有说明。
+        Please read the README section on [Windows changes from Codex 26.915](https://github.com/Wangnov/codex-app-mirror#windows-from-codex-26915-msix-needs-admin-and-portable-installs-start-from-the-launcher) first: the admin prompt and "The process has no package identity" are covered there.
+  - type: checkboxes
+    id: checked
+    attributes:
+      label: 确认 · Checks
+      options:
+        - label: 我已读过上面的 README 说明。 I have read the README section above.
+          required: true
+  - type: dropdown
+    id: method
+    attributes:
+      label: 安装方式 · Install method
+      options:
+        - 双击 .Msix · Double-clicked the .Msix
+        - Add-AppxPackage
+        - Codex App Manager（MSIX）
+        - Codex App Manager（便携 · portable）
+    validations:
+      required: true
+  - type: dropdown
+    id: admin
+    attributes:
+      label: 是否有管理员权限 · Administrator rights
+      options:
+        - 有 · Yes
+        - 没有（公司/学校管理的设备）· No (managed work/school device)
+        - 不确定 · Not sure
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: MSIX 版本与 Windows 版本 · MSIX and Windows versions
+      placeholder: OpenAI.Codex_26.924.2738.0_x64，Windows 11 24H2
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: 报错信息 · Error
+      description: 完整错误文字或错误码（例如 0x80073CF9）；在管理员终端运行 `Add-AppxPackage` 通常能看到更详细的原因。 Full error text or code (e.g. 0x80073CF9); running `Add-AppxPackage` from an elevated terminal usually shows more detail.
+    validations:
+      required: true

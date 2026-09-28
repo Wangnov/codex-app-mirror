@@ -1,0 +1,39 @@
+name: 镜像 / 下载问题 · Mirror or download problem
+description: 短链打不开、下载失败、校验和不一致、版本没跟上官方。 A short link fails, a download breaks, a checksum mismatches, or the mirror lags upstream.
+labels: ["mirror"]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: 问题类型 · Problem
+      options:
+        - 短链无法访问或跳转失败 · Short link unreachable or redirect fails
+        - 下载中断或速度异常 · Download interrupted or unusually slow
+        - SHA256 与 SHA256SUMS.txt 不一致 · SHA256 does not match SHA256SUMS.txt
+        - 版本落后于官方 · Mirror is behind upstream
+        - 其他 · Other
+    validations:
+      required: true
+  - type: input
+    id: link
+    attributes:
+      label: 使用的链接或文件名 · Link or file name
+      placeholder: https://codexapp.agentsmirror.com/latest/win-x64
+    validations:
+      required: true
+  - type: dropdown
+    id: region
+    attributes:
+      label: 网络所在地区 · Network region
+      options:
+        - 中国大陆 · Mainland China
+        - 其他地区 · Elsewhere
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: 现象与报错 · What happened
+      description: 贴出完整报错、HTTP 状态码，或 `curl -I <链接>` 的输出；校验问题请附上你算出的 SHA256。 Paste the full error, HTTP status or `curl -I <link>` output; for checksum problems include the SHA256 you computed.
+    validations:
+      required: true
