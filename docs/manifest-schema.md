@@ -47,11 +47,16 @@ Structure:
   specific one, and only looks up that one key — it never falls back to a different
   architecture's entry (e.g. an `arm64`-only `architectures` map does **not** satisfy this
   requirement, even though it's a non-empty map, because the default x64 parse path would
-  still fail with `"missing Windows version"`). The `architectures.x64` branch additionally
-  rejects an `x64` entry with `downloadable: false`: `select_architecture()` treats that
-  shape as a hard error (`"Windows x64 package is not available in the current mirror
-  manifest"`), not as a fallback to Ok(None) or to another architecture, so it only
-  satisfies this requirement together with a fully-populated top-level fallback.
+  still fail with `"missing Windows version"`). Independently of which of those two
+  requirements is met, a separate `allOf` condition rejects any `architectures.x64` entry
+  with `downloadable: false`: `select_architecture()` looks that key up before it ever
+  consults the top-level fallback and treats the shape as a hard error (`"Windows x64
+  package is not available in the current mirror manifest"`), not as a fallback to the
+  top-level `packageMoniker`/`version`, to Ok(None), or to another architecture. So a
+  manifest with a fully-populated top-level fallback **and** a non-downloadable `x64` entry
+  is invalid too (regression fixture:
+  `invalid/architectures-x64-not-downloadable-with-top-level-fallback.json`). Other
+  architectures (e.g. `arm64`) may still be `downloadable: false`.
 - Each `sources.windows.architectures.<arch>` entry (`$defs/windowsArchitectureSource`)
   requires `version` and `packageMoniker` **unless** `downloadable` is explicitly `false`
   (catalog-only, rollout-drift, or version-unreadable states legitimately omit or stale

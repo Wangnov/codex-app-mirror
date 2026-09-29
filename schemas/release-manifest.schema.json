@@ -72,7 +72,7 @@
 
     "windowsSource": {
       "type": "object",
-      "description": "Consumed by crates/codex-win-engine/src/manifest.rs::parse_manifest_for_arch in Codex-App-Manager. Every field here is Option in Rust, with a per-architecture entry preferred over this top-level fallback. select_architecture() defaults the requested architecture to \"x64\" when the caller (the Manager's own update check) doesn't ask for a specific one, and only looks up that single key in `architectures` -- it never falls back to a different architecture's entry (e.g. arm64-only) when the requested one is missing. So the anyOf below requires either a fully-populated top-level fallback (`packageMoniker` + `version`), or `architectures.x64` specifically (validated against windowsArchitectureSource); an architectures map containing only e.g. `arm64` does not satisfy it, matching the parse failure ('missing Windows version') a Manager on the default x64 path would hit.",
+      "description": "Consumed by crates/codex-win-engine/src/manifest.rs::parse_manifest_for_arch in Codex-App-Manager. Every field here is Option in Rust, with a per-architecture entry preferred over this top-level fallback. select_architecture() defaults the requested architecture to \"x64\" when the caller (the Manager's own update check) doesn't ask for a specific one, and only looks up that single key in `architectures` -- it never falls back to a different architecture's entry (e.g. arm64-only) when the requested one is missing, and it errors out on a present x64 entry marked `downloadable: false` without consulting the top-level fallback. So the allOf below rejects `architectures.x64.downloadable: false` unconditionally, and the anyOf requires either a fully-populated top-level fallback (`packageMoniker` + `version`), or `architectures.x64` specifically (validated against windowsArchitectureSource); an architectures map containing only e.g. `arm64` does not satisfy it, matching the parse failure ('missing Windows version') a Manager on the default x64 path would hit.",
       "properties": {
         "version": { "type": "string", "minLength": 1 },
         "appVersion": { "type": "string", "minLength": 1 },
@@ -97,6 +97,23 @@
         }
       },
       "additionalProperties": true,
+      "allOf": [
+        {
+          "description": "select_architecture() treats a present x64 entry with downloadable explicitly false as a hard error on the default x64 path, before the top-level packageMoniker/version fallback is ever consulted, so such an entry is rejected whichever anyOf branch below is satisfied.",
+          "properties": {
+            "architectures": {
+              "properties": {
+                "x64": {
+                  "not": {
+                    "properties": { "downloadable": { "const": false } },
+                    "required": ["downloadable"]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
       "anyOf": [
         { "required": ["packageMoniker", "version"] },
         {
@@ -104,16 +121,7 @@
           "properties": {
             "architectures": {
               "type": "object",
-              "required": ["x64"],
-              "properties": {
-                "x64": {
-                  "description": "select_architecture() treats an x64 entry with downloadable explicitly false as a hard error (it does not fall back to a different architecture or to Ok(None)), so unlike a generic windowsArchitectureSource entry, this branch only accepts an x64 entry that isn't explicitly marked non-downloadable; a downloadable:false x64 entry only validates via the top-level packageMoniker+version fallback branch above.",
-                  "not": {
-                    "properties": { "downloadable": { "const": false } },
-                    "required": ["downloadable"]
-                  }
-                }
-              }
+              "required": ["x64"]
             }
           }
         }
