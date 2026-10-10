@@ -114,6 +114,18 @@ go into any file in this repo, including `wrangler.jsonc` — see the
 `## Required secrets` section of each `cloudflare/*/README.md` for the exact
 names expected.
 
+## Known dependency thresholds
+
+- `cloudflare/secondary-sync`'s `wrangler` devDependency must stay at
+  **`wrangler@4.131.0` or newer** (currently pinned `^4.135.0`). Below that,
+  `wrangler`'s transitive `miniflare` → `sharp` resolves to `sharp < 0.35.4`,
+  which is Dependabot alert-severity `high` (GHSA for `sharp`'s libvips
+  heap overflow). `wrangler@4.130.0` still resolves `sharp@0.35.2`;
+  `4.131.0` is the first release that resolves `sharp@0.35.4`. Re-check
+  `npm ls sharp --prefix cloudflare/secondary-sync` after any future
+  `wrangler` version change (up or down) to confirm `sharp` stays
+  `>= 0.35.4`.
+
 ## PR / commit conventions
 
 - English, Conventional Commits style (`fix(scope): ...`, `feat: ...`,
