@@ -35,6 +35,13 @@
   🖥️ Prefer one click? <b><a href="https://github.com/Wangnov/Codex-App-Manager">Codex App Manager</a></b> — the desktop client built on this mirror — installs, updates and uninstalls official Codex for you.
 </p>
 
+> [!WARNING]
+> **防骗与安全提示 · Security & Anti-scam Notice**
+>
+> 本项目完全**免费开源（MIT）**，没有任何公众号关注/回复密码门槛、付费引导或收费代下服务。所有安装包均原样镜像自官方渠道（Microsoft Store / OpenAI），不包含任何第三方捆绑软件，并随每个 Release 提供 `SHA256SUMS.txt` 供校验。请仅通过本仓库（`github.com/Wangnov/codex-app-mirror`）或官网（`codexapp.agentsmirror.com`）获取下载链接。
+>
+> This project is **100% free and open source (MIT)** with no WeChat password gates, paywalls, or paid download links. All installers are mirrored verbatim from official channels (Microsoft Store / OpenAI) with zero third-party bundled software, accompanied by `SHA256SUMS.txt` for verification. Obtain downloads only from this repository (`github.com/Wangnov/codex-app-mirror`) or our official site (`codexapp.agentsmirror.com`).
+
 ---
 
 <!-- ⬇ 赞助商 SPONSOR（最顶部，中英双语共享；专属注册链接/优惠码待补，现用主站占位） -->

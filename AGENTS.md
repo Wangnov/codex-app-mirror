@@ -117,7 +117,7 @@ names expected.
 ## Known dependency thresholds
 
 - `cloudflare/secondary-sync`'s `wrangler` devDependency must stay at
-  **`wrangler@4.131.0` or newer** (currently pinned `^4.135.0`). Below that,
+  **`wrangler@4.131.0` or newer** (currently pinned `^4.162.0`). Below that,
   `wrangler`'s transitive `miniflare` → `sharp` resolves to `sharp < 0.35.4`,
   which is Dependabot alert-severity `high` (GHSA for `sharp`'s libvips
   heap overflow). `wrangler@4.130.0` still resolves `sharp@0.35.2`;
