@@ -36,11 +36,11 @@
 </p>
 
 > [!WARNING]
-> **防骗与安全提示 · Security & Anti-scam Notice**
+> **防骗与公益资源合规提示 · Anti-Scam & Public-Interest Compliance Notice**
 >
-> 本项目完全**免费开源（MIT）**，没有任何公众号关注/回复密码门槛、付费引导或收费代下服务。所有安装包均原样镜像自官方渠道（Microsoft Store / OpenAI），不包含任何第三方捆绑软件，并随每个 Release 提供 `SHA256SUMS.txt` 供校验。请仅通过本仓库（`github.com/Wangnov/codex-app-mirror`）或官网（`codexapp.agentsmirror.com`）获取下载链接。
+> 本项目完全**免费开源**，没有任何公众号关注/回复密码门槛、付费引导或收费代下服务；中国大陆镜像节点依托**中国科学院高能物理研究所（IHEP）**提供的科研与开源公益存储运行，**严禁任何商业软件、充值/中转管理器、公众号密码墙或电商倒卖者盗用、内嵌或代理本公益基础设施**（详见[《服务使用条款》](https://codexapp.agentsmirror.com/terms/)）。所有安装包均原样镜像自官方渠道（Microsoft Store / OpenAI），零捆绑，随附 `SHA256SUMS.txt` 供校验。请仅通过本仓库（`github.com/Wangnov/codex-app-mirror`）或官网（`codexapp.agentsmirror.com`）获取下载链接。
 >
-> This project is **100% free and open source (MIT)** with no WeChat password gates, paywalls, or paid download links. All installers are mirrored verbatim from official channels (Microsoft Store / OpenAI) with zero third-party bundled software, accompanied by `SHA256SUMS.txt` for verification. Obtain downloads only from this repository (`github.com/Wangnov/codex-app-mirror`) or our official site (`codexapp.agentsmirror.com`).
+> This project is **100% free and open source** with no WeChat password gates, paywalls, or paid download links. Mainland China mirror storage is non-commercial academic/public-interest infrastructure supported by **CAS IHEP** — **embedding, proxying, or exploiting this hosted mirror inside commercial/recharge/API-relay software or gated installers is strictly prohibited** (see [Terms of Service](https://codexapp.agentsmirror.com/terms/)). Obtain installers only from `github.com/Wangnov/codex-app-mirror` or `codexapp.agentsmirror.com` and verify against `SHA256SUMS.txt`.
 
 ---
 
@@ -248,9 +248,11 @@ Linux Preview 使用 OpenAI 官方 APT/RPM 仓库元数据，并固定仓库签�
   </a>
 </p>
 
-## 许可
+## 许可与服务条款
 
-[MIT](./LICENSE)。本项目与 OpenAI、Microsoft 无隶属或背书关系。
+- **仓库源代码**：[MIT](./LICENSE)。
+- **在线镜像服务（`*.agentsmirror.com` 及国内高能所公益节点）**：受[《镜像与分发服务使用条款》](https://codexapp.agentsmirror.com/terms/)（[摘要](./TERMS.md)）约束，仅限非商业开源公益用途；纯免费开源工具免审批接入规范见条款第三章。
+- **上游安装包**：版权与商标归 OpenAI、Microsoft 所有；本项目与 OpenAI、Microsoft 无隶属或背书关系。
 
 ---
 
@@ -425,6 +427,8 @@ Linux Preview uses OpenAI's official APT/RPM repository metadata with pinned sig
   </a>
 </p>
 
-## License
+## License & Terms of Service
 
-[MIT](./LICENSE). Not affiliated with or endorsed by OpenAI or Microsoft.
+- **Repository source code**: [MIT](./LICENSE).
+- **Hosted mirror service (`*.agentsmirror.com` & CAS IHEP domestic node)**: governed by the [Mirror & Distribution Service Terms](https://codexapp.agentsmirror.com/terms/) ([summary](./TERMS.md)), restricted to non-commercial public-interest use (including zero-approval access for compliant purely non-commercial open-source tools).
+- **Upstream installers**: owned by OpenAI / Microsoft. Not affiliated with or endorsed by OpenAI or Microsoft.
