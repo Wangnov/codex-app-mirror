@@ -299,7 +299,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: Wangnov/agents-mirror-kit
-          ref: v0.3.1
+          ref: v0.3.2
           path: .mirror-kit
 
       - name: Download macOS release artifacts
@@ -616,6 +616,8 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
           R2_S3_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

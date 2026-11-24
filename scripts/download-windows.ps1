@@ -5,7 +5,9 @@ param(
   [string] $PackageIdentity = "OpenAI.Codex",
   [switch] $RequireArm64,
   [int] $StoreLinkMaxAttempts = 12,
-  [int] $StoreLinkRetryDelaySeconds = 30
+  [int] $StoreLinkRetryDelaySeconds = 30,
+  [int] $DownloadMaxAttempts = 4,
+  [int] $DownloadRetryDelaySeconds = 10
 )
 
 $ErrorActionPreference = "Stop"
@@ -16,6 +18,52 @@ if ($StoreLinkMaxAttempts -lt 1) {
 
 if ($StoreLinkRetryDelaySeconds -lt 0) {
   throw "StoreLinkRetryDelaySeconds must be non-negative."
+}
+
+if ($DownloadMaxAttempts -lt 1) {
+  throw "DownloadMaxAttempts must be at least 1."
+}
+
+if ($DownloadRetryDelaySeconds -lt 0) {
+  throw "DownloadRetryDelaySeconds must be non-negative."
+}
+
+function Resolve-ExpectedCatalogSha256 {
+  param(
+    [object] $Catalog,
+    [string] $ExpectedPackageMoniker
+  )
+
+  if ($null -eq $Catalog -or -not $ExpectedPackageMoniker) {
+    return ""
+  }
+
+  $catalogPackage = [string] ($Catalog.packageFullName ?? "")
+  if (-not $catalogPackage -or -not $catalogPackage.Equals($ExpectedPackageMoniker, [StringComparison]::OrdinalIgnoreCase)) {
+    return ""
+  }
+
+  $algorithm = [string] ($Catalog.hashAlgorithm ?? "")
+  $rawHash = ([string] ($Catalog.hash ?? "")).Trim()
+  if (-not $rawHash -or -not $algorithm.Equals("SHA256", [StringComparison]::OrdinalIgnoreCase)) {
+    return ""
+  }
+
+  if ($rawHash -match '^[0-9a-fA-F]{64}$') {
+    return $rawHash.ToLowerInvariant()
+  }
+
+  try {
+    $bytes = [Convert]::FromBase64String($rawHash)
+  } catch {
+    throw "Invalid Base64 catalog SHA-256 hash for $ExpectedPackageMoniker`: $rawHash"
+  }
+
+  if ($bytes.Length -ne 32) {
+    throw "Unexpected decoded catalog SHA-256 byte length ($($bytes.Length)) for $ExpectedPackageMoniker."
+  }
+
+  return [Convert]::ToHexString($bytes).ToLowerInvariant()
 }
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
@@ -45,6 +93,7 @@ if ($ManifestPath) {
           Architecture = $property.Name
           ExpectedPackageMoniker = $entry.packageMoniker
           ExpectedContentLength = [int64] ($entry.contentLength ?? 0)
+          ExpectedSha256 = Resolve-ExpectedCatalogSha256 -Catalog $entry.catalog -ExpectedPackageMoniker $entry.packageMoniker
           Required = ($property.Name -eq "x64" -or $RequireArm64.IsPresent)
         }
       }
@@ -56,6 +105,7 @@ if ($ManifestPath) {
       Architecture = "x64"
       ExpectedPackageMoniker = $manifest.sources.windows.packageMoniker
       ExpectedContentLength = [int64] ($manifest.sources.windows.contentLength ?? 0)
+      ExpectedSha256 = ""
       Required = $true
     }
   }
@@ -68,6 +118,7 @@ if ($ManifestPath) {
     Architecture = "x64"
     ExpectedPackageMoniker = $null
     ExpectedContentLength = 0
+    ExpectedSha256 = ""
     Required = $true
   }
 }
@@ -135,7 +186,7 @@ function Resolve-StorePackageLink {
   throw $lastError
 }
 
-$downloadedTargets = @()
+$downloadedChecksumLines = @()
 foreach ($windowsPackage in $windowsPackages) {
   $resolvedPackage = Resolve-StorePackageLink `
     -Architecture $windowsPackage.Architecture `
@@ -145,38 +196,75 @@ foreach ($windowsPackage in $windowsPackages) {
     continue
   }
 
-  $packageMoniker = $resolvedPackage.PackageMoniker
-  $downloadUrl = $resolvedPackage.DownloadUrl
+  $downloadedOk = $false
+  $lastDownloadError = $null
 
-  $target = Join-Path $OutDir "$packageMoniker.Msix"
-
-  Write-Host "Downloading $packageMoniker"
-  Write-Host "Resolved Microsoft CDN URL: $downloadUrl"
-
-  Invoke-WebRequest `
-    -Uri $downloadUrl `
-    -OutFile $target `
-    -MaximumRedirection 5
-
-  if ($windowsPackage.ExpectedContentLength -gt 0) {
-    $actualLength = (Get-Item -LiteralPath $target).Length
-    if ($actualLength -ne $windowsPackage.ExpectedContentLength) {
-      if (-not $windowsPackage.Required) {
-        Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue
-        Write-Warning "Downloaded size mismatch for optional Windows $($windowsPackage.Architecture) package. Expected $($windowsPackage.ExpectedContentLength) bytes, got $actualLength bytes. Skipping this optional package for this run."
-        continue
+  for ($downloadAttempt = 1; $downloadAttempt -le $DownloadMaxAttempts; $downloadAttempt++) {
+    if ($downloadAttempt -gt 1) {
+      $resolvedPackage = Resolve-StorePackageLink `
+        -Architecture $windowsPackage.Architecture `
+        -ExpectedPackageMoniker $windowsPackage.ExpectedPackageMoniker `
+        -Required $windowsPackage.Required
+      if ($null -eq $resolvedPackage) {
+        break
       }
-      throw "Downloaded size mismatch for $target. Expected $($windowsPackage.ExpectedContentLength) bytes, got $actualLength bytes."
+    }
+
+    $packageMoniker = $resolvedPackage.PackageMoniker
+    $downloadUrl = $resolvedPackage.DownloadUrl
+    $target = Join-Path $OutDir "$packageMoniker.Msix"
+
+    try {
+      Write-Host "Downloading $packageMoniker (attempt $downloadAttempt/$DownloadMaxAttempts)"
+      Write-Host "Resolved Microsoft CDN URL: $downloadUrl"
+
+      Invoke-WebRequest `
+        -Uri $downloadUrl `
+        -OutFile $target `
+        -MaximumRedirection 5
+
+      if ($windowsPackage.ExpectedContentLength -gt 0) {
+        $actualLength = (Get-Item -LiteralPath $target).Length
+        if ($actualLength -ne $windowsPackage.ExpectedContentLength) {
+          throw "Downloaded size mismatch for $target. Expected $($windowsPackage.ExpectedContentLength) bytes, got $actualLength bytes."
+        }
+      }
+
+      $actualSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $target).Hash.ToLowerInvariant()
+      if ($windowsPackage.ExpectedSha256 -and $actualSha256 -ne $windowsPackage.ExpectedSha256) {
+        throw "Downloaded SHA-256 mismatch for $target against DisplayCatalog hash. Expected $($windowsPackage.ExpectedSha256), got $actualSha256."
+      }
+
+      $downloadedChecksumLines += "$actualSha256  $(Split-Path -Leaf $target)"
+      $downloadedOk = $true
+      break
+    } catch {
+      $lastDownloadError = $_
+      Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue
+
+      if ($downloadAttempt -lt $DownloadMaxAttempts) {
+        Write-Warning "Windows $($windowsPackage.Architecture) download/verification failed (attempt $downloadAttempt/$DownloadMaxAttempts): $($_.Exception.Message) Retrying in $DownloadRetryDelaySeconds seconds."
+        if ($DownloadRetryDelaySeconds -gt 0) {
+          Start-Sleep -Seconds $DownloadRetryDelaySeconds
+        }
+      }
     }
   }
 
-  $downloadedTargets += $target
+  if (-not $downloadedOk) {
+    if ($null -eq $resolvedPackage -or -not $windowsPackage.Required) {
+      if ($null -ne $lastDownloadError) {
+        Write-Warning "Skipping optional Windows $($windowsPackage.Architecture) package after $DownloadMaxAttempts failed download attempts: $($lastDownloadError.Exception.Message)"
+      }
+      continue
+    }
+    throw $lastDownloadError
+  }
 }
 
-if ($downloadedTargets.Count -eq 0) {
+if ($downloadedChecksumLines.Count -eq 0) {
   throw "No Windows packages were downloaded."
 }
 
-Get-FileHash -Algorithm SHA256 -Path $downloadedTargets |
-  ForEach-Object { "$($_.Hash.ToLowerInvariant())  $(Split-Path -Leaf $_.Path)" } |
+$downloadedChecksumLines |
   Set-Content -Encoding ascii -Path (Join-Path $OutDir "SHA256SUMS-windows.txt")

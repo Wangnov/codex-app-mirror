@@ -13,7 +13,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "$tmp_dir/bin" "$tmp_dir/server" "$tmp_dir/out"
+mkdir -p "$tmp_dir/bin" "$tmp_dir/server" "$tmp_dir/out" "$tmp_dir/out-corrupt-retry" "$tmp_dir/out-corrupt-fail"
 counter_path="$tmp_dir/store-link-count"
 printf '0' > "$counter_path"
 
@@ -22,7 +22,29 @@ old_package="OpenAI.Codex_26.616.3767.0_x64__2p2nqsd0c76g0"
 expected_arm64_package="OpenAI.Codex_26.616.4196.0_arm64__2p2nqsd0c76g0"
 changed_arm64_package="OpenAI.Codex_26.616.5000.0_arm64__2p2nqsd0c76g0"
 printf 'win' > "$tmp_dir/server/$expected_package.Msix"
+printf 'bad' > "$tmp_dir/server/corrupt-$expected_package.Msix"
 printf 'arm64-new' > "$tmp_dir/server/$changed_arm64_package.Msix"
+
+expected_win_b64_sha256="$(
+  python3 - "$tmp_dir/server/$expected_package.Msix" <<'PY'
+import base64
+import hashlib
+import pathlib
+import sys
+
+digest = hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).digest()
+print(base64.b64encode(digest).decode("ascii"))
+PY
+)"
+expected_win_hex_sha256="$(
+  python3 - "$tmp_dir/server/$expected_package.Msix" <<'PY'
+import hashlib
+import pathlib
+import sys
+
+print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())
+PY
+)"
 
 cat > "$tmp_dir/bin/dotnet" <<'DOTNET'
 #!/usr/bin/env bash
@@ -48,16 +70,39 @@ case "${1:-}" in
     count="$(cat "${TEST_STORE_LINK_COUNTER:?TEST_STORE_LINK_COUNTER must be set}")"
     count=$((count + 1))
     printf '%s' "$count" > "$TEST_STORE_LINK_COUNTER"
-    if [[ "$count" -eq 1 ]]; then
-      printf '%s\thttp://127.0.0.1:%s/%s.Msix\n' \
-        "${TEST_OLD_PACKAGE:?TEST_OLD_PACKAGE must be set}" \
-        "${TEST_HTTP_PORT:?TEST_HTTP_PORT must be set}" \
-        "$TEST_OLD_PACKAGE"
-    else
-      printf '%s\thttp://127.0.0.1:%s/%s.Msix\n' \
+    mode="${TEST_MODE:-rollout}"
+    if [[ "$mode" == "rollout" ]]; then
+      if [[ "$count" -eq 1 ]]; then
+        printf '%s\thttp://127.0.0.1:%s/%s.Msix\n' \
+          "${TEST_OLD_PACKAGE:?TEST_OLD_PACKAGE must be set}" \
+          "${TEST_HTTP_PORT:?TEST_HTTP_PORT must be set}" \
+          "$TEST_OLD_PACKAGE"
+      else
+        printf '%s\thttp://127.0.0.1:%s/%s.Msix\n' \
+          "${TEST_EXPECTED_PACKAGE:?TEST_EXPECTED_PACKAGE must be set}" \
+          "${TEST_HTTP_PORT:?TEST_HTTP_PORT must be set}" \
+          "$TEST_EXPECTED_PACKAGE"
+      fi
+    elif [[ "$mode" == "corrupt-once" ]]; then
+      if [[ "$count" -eq 1 ]]; then
+        printf '%s\thttp://127.0.0.1:%s/corrupt-%s.Msix\n' \
+          "${TEST_EXPECTED_PACKAGE:?TEST_EXPECTED_PACKAGE must be set}" \
+          "${TEST_HTTP_PORT:?TEST_HTTP_PORT must be set}" \
+          "$TEST_EXPECTED_PACKAGE"
+      else
+        printf '%s\thttp://127.0.0.1:%s/%s.Msix\n' \
+          "${TEST_EXPECTED_PACKAGE:?TEST_EXPECTED_PACKAGE must be set}" \
+          "${TEST_HTTP_PORT:?TEST_HTTP_PORT must be set}" \
+          "$TEST_EXPECTED_PACKAGE"
+      fi
+    elif [[ "$mode" == "corrupt-always" ]]; then
+      printf '%s\thttp://127.0.0.1:%s/corrupt-%s.Msix\n' \
         "${TEST_EXPECTED_PACKAGE:?TEST_EXPECTED_PACKAGE must be set}" \
         "${TEST_HTTP_PORT:?TEST_HTTP_PORT must be set}" \
         "$TEST_EXPECTED_PACKAGE"
+    else
+      echo "unexpected TEST_MODE: $mode" >&2
+      exit 1
     fi
     ;;
   *)
@@ -130,6 +175,7 @@ JSON
 (
   cd "$repo_root"
   PATH="$tmp_dir/bin:$PATH" \
+  TEST_MODE="rollout" \
   TEST_STORE_LINK_COUNTER="$counter_path" \
   TEST_OLD_PACKAGE="$old_package" \
   TEST_EXPECTED_PACKAGE="$expected_package" \
@@ -151,5 +197,81 @@ if grep -F 'arm64' "$tmp_dir/out/SHA256SUMS-windows.txt"; then
   echo "Optional ARM64 drift should not appear in SHA256SUMS-windows.txt." >&2
   exit 1
 fi
+
+# Case 2: Same-size corrupt HTTP payload fails DisplayCatalog SHA-256 verification and succeeds on retry.
+cat > "$tmp_dir/probe-manifest-catalog.json" <<JSON
+{
+  "schemaVersion": 1,
+  "sources": {
+    "windows": {
+      "packageMoniker": "$expected_package",
+      "contentLength": 3,
+      "architectures": {
+        "x64": {
+          "architecture": "x64",
+          "status": "downloadable",
+          "downloadable": true,
+          "packageMoniker": "$expected_package",
+          "contentLength": 3,
+          "catalog": {
+            "packageFullName": "$expected_package",
+            "hashAlgorithm": "SHA256",
+            "hash": "$expected_win_b64_sha256",
+            "contentLength": 3
+          }
+        }
+      }
+    }
+  }
+}
+JSON
+
+printf '0' > "$counter_path"
+(
+  cd "$repo_root"
+  PATH="$tmp_dir/bin:$PATH" \
+  TEST_MODE="corrupt-once" \
+  TEST_STORE_LINK_COUNTER="$counter_path" \
+  TEST_OLD_PACKAGE="$old_package" \
+  TEST_EXPECTED_PACKAGE="$expected_package" \
+  TEST_CHANGED_ARM64_PACKAGE="$changed_arm64_package" \
+  TEST_HTTP_PORT="$port" \
+    pwsh -NoLogo -NoProfile -File scripts/download-windows.ps1 \
+      -OutDir "$tmp_dir/out-corrupt-retry" \
+      -ManifestPath "$tmp_dir/probe-manifest-catalog.json" \
+      -StoreLinkMaxAttempts 1 \
+      -StoreLinkRetryDelaySeconds 0 \
+      -DownloadMaxAttempts 2 \
+      -DownloadRetryDelaySeconds 0
+)
+
+test "$(cat "$counter_path")" = "2"
+test "$(cat "$tmp_dir/out-corrupt-retry/$expected_package.Msix")" = "win"
+grep -Fxq "$expected_win_hex_sha256  $expected_package.Msix" "$tmp_dir/out-corrupt-retry/SHA256SUMS-windows.txt"
+
+# Case 3: Persistent DisplayCatalog SHA-256 mismatch fails the required download and removes the corrupt file.
+printf '0' > "$counter_path"
+if (
+  cd "$repo_root"
+  PATH="$tmp_dir/bin:$PATH" \
+  TEST_MODE="corrupt-always" \
+  TEST_STORE_LINK_COUNTER="$counter_path" \
+  TEST_OLD_PACKAGE="$old_package" \
+  TEST_EXPECTED_PACKAGE="$expected_package" \
+  TEST_CHANGED_ARM64_PACKAGE="$changed_arm64_package" \
+  TEST_HTTP_PORT="$port" \
+    pwsh -NoLogo -NoProfile -File scripts/download-windows.ps1 \
+      -OutDir "$tmp_dir/out-corrupt-fail" \
+      -ManifestPath "$tmp_dir/probe-manifest-catalog.json" \
+      -StoreLinkMaxAttempts 1 \
+      -StoreLinkRetryDelaySeconds 0 \
+      -DownloadMaxAttempts 2 \
+      -DownloadRetryDelaySeconds 0
+); then
+  echo "Expected persistent SHA-256 mismatch to fail download-windows.ps1." >&2
+  exit 1
+fi
+test "$(cat "$counter_path")" = "2"
+test ! -f "$tmp_dir/out-corrupt-fail/$expected_package.Msix"
 
 echo "download-windows retry fixture PASS"
