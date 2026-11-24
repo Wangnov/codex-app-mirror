@@ -101,6 +101,7 @@ export R2_CACHE_CONTROL="$cache_control"
 export R2_CLI_CONNECT_TIMEOUT_SECONDS="$connect_timeout"
 export R2_CLI_READ_TIMEOUT_SECONDS="$read_timeout"
 export R2_UPLOAD_MODE="$upload_mode"
+export R2_UPLOAD_ATTEMPTS=1
 
 mac_arm64="$1"
 mac_intel="$2"
