@@ -1,0 +1,7 @@
+{
+  "ref": "codexapp_mirror_backend_proxy_block",
+  "enabled": true,
+  "action": "block",
+  "description": "agentsmirror: block high-quota manifest pollers and unauthorized backend sync proxies at Edge WAF",
+  "expression": "(http.host in {\"codexapp.agentsmirror.com\" \"codexapp-r2.agentsmirror.com\" \"claudeapp.agentsmirror.com\" \"claudeapp-r2.agentsmirror.com\"}) and not starts_with(http.request.uri.path, \"/terms\") and not starts_with(http.request.uri.path, \"/stats/\") and (lower(http.user_agent) contains \"kakou/\" or lower(http.user_agent) contains \"auto-gateway-codex\" or lower(http.user_agent) contains \"codexdownloadproxy\" or lower(http.user_agent) contains \"hermes-cron\" or ip.src in {43.153.215.201 152.53.160.132})"
+}

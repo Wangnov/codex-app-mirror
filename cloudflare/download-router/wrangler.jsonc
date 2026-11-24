@@ -19,27 +19,23 @@
       "ccwu.cc"
     ],
     "BLOCKED_UA_SUBSTRINGS": [
+      "kakou/",
       "越途ai智枢",
       "yuetunexus",
-      "kakou/",
-      "xingmang-ai-manager",
-      "yuluogptsetup",
+      "funtoolkit/",
+      "nicecodetools",
+      "auto-gateway-codex",
+      "autogateway-desktop",
+      "ccswitchpro-resourceworker",
       "relayautoconfig",
       "relayassistant",
-      "copilotbridgenative",
-      "nicecodetools",
-      "codex2api",
       "yaoyao-chatgpt",
-      "xiaojiassistant",
-      "pojiamanager",
+      "yaoyao-claude",
+      "codexdownloadproxy",
+      "yihaogpt-tools",
+      "hermes-cron",
       "tianyulink-installer",
-      "chatgptlauncher-codexinstaller",
-      "ccswitchpro-resourceworker",
-      "kjhassistant",
-      "c2a agent studio",
-      "codestudio lite",
-      "winipptchannelchecker",
-      "yihaogpt-tools"
+      "pojiamanager"
     ],
     "ROUTE_CONFIG": {
       "aliases": {

@@ -1,0 +1,16 @@
+{
+  "ref": "codexapp_r2_unauthorized_ua_redirect",
+  "enabled": true,
+  "action": "redirect",
+  "description": "codexapp-r2: redirect unauthorized clients to main router for 403 policy notice",
+  "expression": "http.host eq \"codexapp-r2.agentsmirror.com\" and not starts_with(http.request.uri.path, \"/stats/\") and (lower(http.user_agent) contains \"kakou/\" or lower(http.user_agent) contains \"越途ai智枢\" or lower(http.user_agent) contains \"yuetunexus\" or lower(http.user_agent) contains \"funtoolkit/\" or lower(http.user_agent) contains \"nicecodetools\" or lower(http.user_agent) contains \"auto-gateway-codex\" or lower(http.user_agent) contains \"autogateway-desktop\" or lower(http.user_agent) contains \"ccswitchpro-resourceworker\" or lower(http.user_agent) contains \"relayautoconfig\" or lower(http.user_agent) contains \"relayassistant\" or lower(http.user_agent) contains \"yaoyao-chatgpt\" or lower(http.user_agent) contains \"yaoyao-claude\" or lower(http.user_agent) contains \"codexdownloadproxy\" or lower(http.user_agent) contains \"yihaogpt-tools\" or lower(http.user_agent) contains \"hermes-cron\" or lower(http.user_agent) contains \"tianyulink-installer\" or lower(http.user_agent) contains \"pojiamanager\")",
+  "action_parameters": {
+    "from_value": {
+      "preserve_query_string": false,
+      "status_code": 307,
+      "target_url": {
+        "value": "https://codexapp.agentsmirror.com/latest/manifest?mirror_policy=r2"
+      }
+    }
+  }
+}
