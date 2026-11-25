@@ -357,7 +357,12 @@ headers_for_url() {
     *codexapp.agentsmirror.com/latest/mac-arm64*|\
     *codexapp.agentsmirror.com/latest/mac-intel*|\
     *codexapp.agentsmirror.com/latest/mac/arm64/Codex-darwin-arm64-1.2.3.zip*|\
-    *codexapp.agentsmirror.com/latest/mac/intel/Codex-darwin-x64-1.2.3.zip*)
+    *codexapp.agentsmirror.com/latest/mac/intel/Codex-darwin-x64-1.2.3.zip*|\
+    *codexapp-r2.agentsmirror.test/latest/win*|\
+    *codexapp-r2.agentsmirror.test/latest/mac-arm64*|\
+    *codexapp-r2.agentsmirror.test/latest/mac-intel*|\
+    *codexapp-r2.agentsmirror.test/latest/mac/arm64/Codex-darwin-arm64-1.2.3.zip*|\
+    *codexapp-r2.agentsmirror.test/latest/mac/intel/Codex-darwin-x64-1.2.3.zip*)
       emit_headers "public-etag"
       ;;
     *)
@@ -368,13 +373,27 @@ headers_for_url() {
 }
 
 if [[ -n "$headers_file" ]]; then
+  if [[ -n "${TEST_CURL_LOG:-}" ]]; then
+    printf 'RANGE %s\n' "$url" >> "$TEST_CURL_LOG"
+  fi
   headers_for_url > "$headers_file"
   exit 0
 fi
 
 if $head_request; then
+  if [[ -n "${TEST_CURL_LOG:-}" ]]; then
+    printf 'HEAD %s\n' "$url" >> "$TEST_CURL_LOG"
+  fi
+  if [[ "${TEST_FORCE_HEAD_403:-false}" == "true" && ( "$url" == *codexapp.agentsmirror.com/latest/* || "$url" == *codexapp-r2.agentsmirror.test/latest/* ) ]]; then
+    echo "simulated 403 on HEAD for presigned S3" >&2
+    exit 22
+  fi
   headers_for_url
   exit 0
+fi
+
+if [[ -n "${TEST_CURL_LOG:-}" ]]; then
+  printf 'GET %s\n' "$url" >> "$TEST_CURL_LOG"
 fi
 
 case "$url" in
@@ -396,7 +415,11 @@ JSON
     cat "${TEST_PUBLIC_APPCAST_X64:?TEST_PUBLIC_APPCAST_X64 must be set}"
     ;;
   *codexapp.agentsmirror.com/latest/checksums*)
-    printf 'stale-checksum  release-manifest.json\n'
+    if [[ -n "${TEST_PUBLIC_CHECKSUMS:-}" ]]; then
+      cat "$TEST_PUBLIC_CHECKSUMS"
+    else
+      printf 'stale-checksum  release-manifest.json\n'
+    fi
     ;;
   *appcast.xml)
     emit_appcast arm64 arm-signature arm64
@@ -551,5 +574,77 @@ if [[ "$github_503_status" -eq 0 ]] ||
   printf '%s\n' "$github_503_output" >&2
   exit 1
 fi
+
+jq '
+  .derived = {
+    latestChecksums: {
+      "OpenAI.Codex_1.2.3.4_x64__2p2nqsd0c76g0.Msix": "1111111111111111111111111111111111111111111111111111111111111111",
+      "Codex-mac-arm64.dmg": "2222222222222222222222222222222222222222222222222222222222222222",
+      "Codex-mac-x64.dmg": "3333333333333333333333333333333333333333333333333333333333333333",
+      "Codex-darwin-arm64-1.2.3.zip": "4444444444444444444444444444444444444444444444444444444444444444",
+      "Codex-darwin-x64-1.2.3.zip": "5555555555555555555555555555555555555555555555555555555555555555"
+    }
+  }
+' "$tmp_dir/public-manifest.json" > "$tmp_dir/matching-public-manifest.json"
+matching_manifest_sha="$(sha256sum "$tmp_dir/matching-public-manifest.json" | awk '{print tolower($1)}')"
+cat > "$tmp_dir/matching-public-checksums.txt" <<SUMS
+1111111111111111111111111111111111111111111111111111111111111111  OpenAI.Codex_1.2.3.4_x64__2p2nqsd0c76g0.Msix
+2222222222222222222222222222222222222222222222222222222222222222  Codex-mac-arm64.dmg
+3333333333333333333333333333333333333333333333333333333333333333  Codex-mac-x64.dmg
+4444444444444444444444444444444444444444444444444444444444444444  Codex-darwin-arm64-1.2.3.zip
+5555555555555555555555555555555555555555555555555555555555555555  Codex-darwin-x64-1.2.3.zip
+$matching_manifest_sha  release-manifest.json
+SUMS
+
+curl_log="$tmp_dir/curl-origin.log"
+: > "$curl_log"
+(
+  cd "$repo_root"
+  PATH="$tmp_dir/bin:$PATH" \
+  TEST_GH_LOG="$gh_log" \
+  TEST_CURL_LOG="$curl_log" \
+  TEST_LATEST_TAG="$latest_tag" \
+  TEST_LATEST_MANIFEST="$tmp_dir/matching-public-manifest.json" \
+  TEST_LATEST_CHECKSUMS="$tmp_dir/matching-public-checksums.txt" \
+  TEST_PUBLIC_MANIFEST="$tmp_dir/matching-public-manifest.json" \
+  TEST_PUBLIC_CHECKSUMS="$tmp_dir/matching-public-checksums.txt" \
+  TEST_PUBLIC_APPCAST="$tmp_dir/public-appcast.xml" \
+  TEST_PUBLIC_APPCAST_X64="$tmp_dir/public-appcast-x64.xml" \
+  R2_ORIGIN_BASE_URL="https://codexapp-r2.agentsmirror.test" \
+  STORE_LINK_MAX_ATTEMPTS=1 \
+  MANIFEST_PATH="$tmp_dir/origin-head-probe.json" \
+    scripts/probe-release.sh > "$tmp_dir/origin-head-output.txt"
+)
+grep -F "should_release=false" "$tmp_dir/origin-head-output.txt"
+test "$(grep -c 'GET https://codexapp.agentsmirror.com/latest/manifest' "$curl_log")" = "1"
+grep -Fq 'HEAD https://codexapp-r2.agentsmirror.test/latest/win?' "$curl_log"
+grep -Fq 'HEAD https://codexapp-r2.agentsmirror.test/latest/mac/arm64/Codex-darwin-arm64-1.2.3.zip?' "$curl_log"
+if grep -Fq 'RANGE https://codexapp' "$curl_log"; then
+  echo "Expected public mirror object checks to use HEAD without falling back to RANGE when HEAD succeeds" >&2
+  cat "$curl_log" >&2
+  exit 1
+fi
+
+curl_fallback_log="$tmp_dir/curl-fallback.log"
+: > "$curl_fallback_log"
+(
+  cd "$repo_root"
+  PATH="$tmp_dir/bin:$PATH" \
+  TEST_GH_LOG="$gh_log" \
+  TEST_CURL_LOG="$curl_fallback_log" \
+  TEST_FORCE_HEAD_403=true \
+  TEST_LATEST_TAG="$latest_tag" \
+  TEST_LATEST_MANIFEST="$tmp_dir/matching-public-manifest.json" \
+  TEST_LATEST_CHECKSUMS="$tmp_dir/matching-public-checksums.txt" \
+  TEST_PUBLIC_MANIFEST="$tmp_dir/matching-public-manifest.json" \
+  TEST_PUBLIC_CHECKSUMS="$tmp_dir/matching-public-checksums.txt" \
+  TEST_PUBLIC_APPCAST="$tmp_dir/public-appcast.xml" \
+  TEST_PUBLIC_APPCAST_X64="$tmp_dir/public-appcast-x64.xml" \
+  STORE_LINK_MAX_ATTEMPTS=1 \
+  MANIFEST_PATH="$tmp_dir/fallback-range-probe.json" \
+    scripts/probe-release.sh > "$tmp_dir/fallback-range-output.txt"
+)
+grep -F "should_release=false" "$tmp_dir/fallback-range-output.txt"
+grep -Fq 'RANGE https://codexapp.agentsmirror.com/latest/win?' "$curl_fallback_log"
 
 echo "probe-release fixture test PASS"

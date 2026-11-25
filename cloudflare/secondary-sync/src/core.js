@@ -1,5 +1,11 @@
-const DEFAULT_PART_SIZE_BYTES = 16 * 1024 * 1024;
+const DEFAULT_PART_SIZE_BYTES = 32 * 1024 * 1024;
 const DEFAULT_SINGLE_PUT_MAX_BYTES = 32 * 1024 * 1024;
+const DEFAULT_S3_MAX_ATTEMPTS = 5;
+const DEFAULT_S3_COPY_MAX_ATTEMPTS = 3;
+const DEFAULT_S3_RETRY_BASE_DELAY_MS = 1000;
+const DEFAULT_S3_RETRY_MAX_DELAY_MS = 10000;
+const DEFAULT_S3_REQUEST_TIMEOUT_MS = 180000;
+const DEFAULT_S3_COPY_TIMEOUT_MS = 270000;
 const DEFAULT_CACHE_CONTROL = "public, max-age=600, s-maxage=86400";
 const SHORT_CACHE_CONTROL = "public, max-age=600";
 const DEFAULT_STAGE_PREFIX = "staging/secondary-sync";
@@ -132,6 +138,8 @@ export async function startSync(env, params = {}) {
 }
 
 export async function reconcileSync(env, params = {}) {
+  assertWorkflowBinding(env);
+  const force = Boolean(params.force);
   const source = await discoverSourceManifest(env, params.releaseTag || "");
   const s3 = createS3Client(env);
   let secondaryManifest = null;
@@ -148,7 +156,7 @@ export async function reconcileSync(env, params = {}) {
     }
   }
 
-  if (secondaryManifest === source.manifestText && !params.force) {
+  if (secondaryManifest === source.manifestText && !force) {
     return {
       ok: true,
       skipped: true,
@@ -157,11 +165,66 @@ export async function reconcileSync(env, params = {}) {
     };
   }
 
-  return startSync(env, {
-    releaseTag: source.releaseTag,
-    force: Boolean(params.force),
-    idSalt: `${source.manifestSha256}-${Date.now()}`,
-  });
+  const canonicalId = workflowInstanceId(source.releaseTag, source.manifestSha256 || "");
+  const existing = await getWorkflowIfExists(env, canonicalId);
+  if (!existing) {
+    try {
+      return await startSync(env, {
+        releaseTag: source.releaseTag,
+        force,
+        instanceId: canonicalId,
+      });
+    } catch {
+      return startSync(env, {
+        releaseTag: source.releaseTag,
+        force,
+        idSalt: `${source.manifestSha256}-${Date.now()}`,
+      });
+    }
+  }
+
+  const status = await existing.status();
+  const state = normalizeWorkflowState(status);
+  if (isActiveWorkflowState(state)) {
+    return {
+      ok: true,
+      id: existing.id,
+      state,
+      status,
+      releaseTag: source.releaseTag,
+      created: false,
+      restarted: false,
+      reused: true,
+    };
+  }
+
+  if (force) {
+    return startSync(env, {
+      releaseTag: source.releaseTag,
+      force: true,
+      idSalt: `${source.manifestSha256}-force-${Date.now()}`,
+    });
+  }
+
+  try {
+    await existing.restart();
+    const restartedStatus = await existing.status();
+    return {
+      ok: true,
+      id: existing.id,
+      state: normalizeWorkflowState(restartedStatus),
+      status: restartedStatus,
+      releaseTag: source.releaseTag,
+      created: false,
+      restarted: true,
+    };
+  } catch {
+    return startSync(env, {
+      releaseTag: source.releaseTag,
+      force: false,
+      idSalt: `${source.manifestSha256}-${Date.now()}`,
+    });
+  }
 }
 
 export async function workflowStatus(env, id) {
@@ -501,12 +564,12 @@ async function commitOneAlias(s3, stageKey, aliasKey, expectedSize) {
 
   if (existing) {
     await s3.deleteObject(backupKey);
-    await s3.copyObject(aliasKey, backupKey);
+    await s3.copyObject(aliasKey, backupKey, { expectedSize: existing.contentLength });
     await s3.deleteObject(aliasKey);
   }
 
   try {
-    await s3.copyObject(stageKey, aliasKey);
+    await s3.copyObject(stageKey, aliasKey, { expectedSize });
     const verified = await s3.headObject(aliasKey);
     if (!verified || verified.contentLength !== expectedSize) {
       throw new Error(
@@ -523,11 +586,12 @@ async function commitOneAlias(s3, stageKey, aliasKey, expectedSize) {
 
 async function restoreAliasFromBackup(s3, aliasKey, backupKey) {
   try {
-    if (!(await s3.headObject(backupKey))) {
+    const backup = await s3.headObject(backupKey);
+    if (!backup) {
       return;
     }
     await s3.deleteObject(aliasKey);
-    await s3.copyObject(backupKey, aliasKey);
+    await s3.copyObject(backupKey, aliasKey, { expectedSize: backup.contentLength });
     await s3.deleteObject(backupKey);
   } catch (restoreError) {
     // 备份留在原处，供下一次重试还原。
@@ -756,6 +820,23 @@ export function createS3Client(env) {
     region: env.SECONDARY_S3_REGION || "auto",
     accessKeyId: requiredEnv(env, "SECONDARY_S3_ACCESS_KEY_ID"),
     secretAccessKey: requiredEnv(env, "SECONDARY_S3_SECRET_ACCESS_KEY"),
+    maxAttempts: parsePositiveInteger(env.SECONDARY_S3_MAX_ATTEMPTS, DEFAULT_S3_MAX_ATTEMPTS),
+    retryBaseDelayMs: parseNonNegativeInteger(
+      env.SECONDARY_S3_RETRY_BASE_DELAY_MS,
+      DEFAULT_S3_RETRY_BASE_DELAY_MS,
+    ),
+    retryMaxDelayMs: parseNonNegativeInteger(
+      env.SECONDARY_S3_RETRY_MAX_DELAY_MS,
+      DEFAULT_S3_RETRY_MAX_DELAY_MS,
+    ),
+    requestTimeoutMs: parseNonNegativeInteger(
+      env.SECONDARY_S3_REQUEST_TIMEOUT_MS,
+      DEFAULT_S3_REQUEST_TIMEOUT_MS,
+    ),
+    copyTimeoutMs: parseNonNegativeInteger(
+      env.SECONDARY_S3_COPY_TIMEOUT_MS,
+      DEFAULT_S3_COPY_TIMEOUT_MS,
+    ),
   });
 }
 
@@ -766,6 +847,23 @@ export class S3Client {
     this.region = options.region || "auto";
     this.accessKeyId = options.accessKeyId;
     this.secretAccessKey = options.secretAccessKey;
+    this.maxAttempts = parsePositiveInteger(options.maxAttempts, DEFAULT_S3_MAX_ATTEMPTS);
+    this.retryBaseDelayMs = parseNonNegativeInteger(
+      options.retryBaseDelayMs,
+      DEFAULT_S3_RETRY_BASE_DELAY_MS,
+    );
+    this.retryMaxDelayMs = parseNonNegativeInteger(
+      options.retryMaxDelayMs,
+      DEFAULT_S3_RETRY_MAX_DELAY_MS,
+    );
+    this.requestTimeoutMs = parseNonNegativeInteger(
+      options.requestTimeoutMs,
+      DEFAULT_S3_REQUEST_TIMEOUT_MS,
+    );
+    this.copyTimeoutMs = parseNonNegativeInteger(
+      options.copyTimeoutMs,
+      DEFAULT_S3_COPY_TIMEOUT_MS,
+    );
   }
 
   async headObject(key) {
@@ -821,14 +919,14 @@ export class S3Client {
   }
 
   async putObject(key, body, metadata) {
-    const response = await this.request({
+    return this.request({
       method: "PUT",
       key,
       headers: objectMetadataHeaders(metadata),
       body,
+      operation: "PUT",
+      targetLabel: key,
     });
-    await assertOk(response, "PUT", key);
-    return response;
   }
 
   async createMultipartUpload(key, metadata) {
@@ -837,8 +935,9 @@ export class S3Client {
       key,
       query: [["uploads", ""]],
       headers: objectMetadataHeaders(metadata),
+      operation: "POST",
+      targetLabel: `${key}?uploads`,
     });
-    await assertOk(response, "POST", `${key}?uploads`);
     const xml = await response.text();
     const uploadId = xmlText(xml, "UploadId");
     if (!uploadId) {
@@ -856,8 +955,9 @@ export class S3Client {
         ["uploadId", uploadId],
       ],
       body,
+      operation: "PUT",
+      targetLabel: `${key} part ${partNumber}`,
     });
-    await assertOk(response, "PUT", `${key} part ${partNumber}`);
     const etag = response.headers.get("etag");
     if (!etag) {
       throw new Error(`S3 upload part response for ${key} part ${partNumber} did not include ETag.`);
@@ -867,7 +967,7 @@ export class S3Client {
 
   async completeMultipartUpload(key, uploadId, parts) {
     const body = completeMultipartXml(parts);
-    const response = await this.request({
+    return this.request({
       method: "POST",
       key,
       query: [["uploadId", uploadId]],
@@ -875,9 +975,9 @@ export class S3Client {
         "content-type": "application/xml",
       },
       body,
+      operation: "POST",
+      targetLabel: `${key}?uploadId=${uploadId}`,
     });
-    await assertOk(response, "POST", `${key}?uploadId=${uploadId}`);
-    return response;
   }
 
   async abortMultipartUpload(key, uploadId) {
@@ -886,6 +986,8 @@ export class S3Client {
       key,
       query: [["uploadId", uploadId]],
       expectOk: false,
+      operation: "DELETE",
+      targetLabel: `${key}?uploadId=${uploadId}`,
     });
     if (response.status === 404) {
       return response;
@@ -913,8 +1015,9 @@ export class S3Client {
         method: "GET",
         key: "",
         query,
+        operation: "LIST MULTIPART",
+        targetLabel: prefix,
       });
-      await assertOk(response, "LIST MULTIPART", prefix);
       const xml = await response.text();
       uploads.push(...xmlMultipartUploads(xml));
       keyMarker = xmlText(xml, "NextKeyMarker");
@@ -923,20 +1026,74 @@ export class S3Client {
     return uploads;
   }
 
-  async copyObject(sourceKey, destinationKey) {
-    const response = await this.request({
-      method: "PUT",
-      key: destinationKey,
-      headers: {
-        "x-amz-copy-source": `/${encodeRfc3986(this.bucket)}/${encodeKeyPath(sourceKey)}`,
-      },
-    });
-    await assertOk(response, "COPY", `${sourceKey} -> ${destinationKey}`);
-    return response;
+  async copyObject(sourceKey, destinationKey, { expectedSize } = {}) {
+    const attempts = Math.max(1, Math.min(this.maxAttempts, DEFAULT_S3_COPY_MAX_ATTEMPTS));
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      if (attempt > 1) {
+        const existingDest = await this.headObject(destinationKey);
+        if (existingDest) {
+          if (expectedSize !== undefined && existingDest.contentLength === expectedSize) {
+            return existingDest;
+          }
+          await this.deleteObject(destinationKey);
+        }
+      }
+
+      try {
+        return await this.request({
+          method: "PUT",
+          key: destinationKey,
+          headers: {
+            "x-amz-copy-source": `/${encodeRfc3986(this.bucket)}/${encodeKeyPath(sourceKey)}`,
+          },
+          operation: "COPY",
+          targetLabel: `${sourceKey} -> ${destinationKey}`,
+          maxAttempts: 1,
+          timeoutMs: this.copyTimeoutMs,
+        });
+      } catch (error) {
+        lastError = error;
+        if (!isRetryableCopyError(error) || attempt >= attempts) {
+          if (expectedSize !== undefined) {
+            try {
+              const existingDest = await this.headObject(destinationKey);
+              if (existingDest && existingDest.contentLength === expectedSize) {
+                return existingDest;
+              }
+            } catch {
+              // Keep original COPY error if post-failure HEAD also fails.
+            }
+          }
+          throw error;
+        }
+        const delayMs = computeRetryDelayMs(attempt, this.retryBaseDelayMs, this.retryMaxDelayMs);
+        console.warn(
+          JSON.stringify({
+            event: "secondary_s3_copy_retry",
+            target: `${sourceKey} -> ${destinationKey}`,
+            attempt,
+            maxAttempts: attempts,
+            delayMs,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+        await sleepMs(delayMs);
+      }
+    }
+
+    throw lastError || new Error(`S3 COPY ${sourceKey} -> ${destinationKey} failed.`);
   }
 
   async deleteObject(key) {
-    const response = await this.request({ method: "DELETE", key, expectOk: false });
+    const response = await this.request({
+      method: "DELETE",
+      key,
+      expectOk: false,
+      operation: "DELETE",
+      targetLabel: key,
+    });
     if (response.status === 404) {
       return response;
     }
@@ -959,8 +1116,9 @@ export class S3Client {
         method: "GET",
         key: "",
         query,
+        operation: "LIST",
+        targetLabel: prefix,
       });
-      await assertOk(response, "LIST", prefix);
       const xml = await response.text();
       for (const entry of xmlContents(xml)) {
         objects.push(entry);
@@ -970,64 +1128,121 @@ export class S3Client {
     return objects;
   }
 
-  async request({ method, key = "", query = [], headers = {}, body, expectOk = true }) {
+  async request({
+    method,
+    key = "",
+    query = [],
+    headers = {},
+    body,
+    expectOk = true,
+    operation = method,
+    targetLabel = key || this.bucket,
+    maxAttempts = this.maxAttempts,
+    timeoutMs = this.requestTimeoutMs,
+  }) {
     const endpoint = new URL(this.endpoint);
-    const now = new Date();
-    const amzDate = formatAmzDate(now);
-    const dateStamp = amzDate.slice(0, 8);
-    const credentialScope = `${dateStamp}/${this.region}/s3/aws4_request`;
     const canonicalUri = canonicalS3Uri(endpoint, this.bucket, key);
     const canonicalQuery = canonicalQueryString(query);
-    const signedHeadersMap = normalizeHeaders({
-      ...headers,
-      host: endpoint.host,
-      "x-amz-content-sha256": "UNSIGNED-PAYLOAD",
-      "x-amz-date": amzDate,
-    });
-    const signedHeaderNames = Object.keys(signedHeadersMap).sort();
-    const canonicalHeaders = signedHeaderNames
-      .map((name) => `${name}:${signedHeadersMap[name]}\n`)
-      .join("");
-    const signedHeaders = signedHeaderNames.join(";");
-    const canonicalRequest = [
-      method,
-      canonicalUri,
-      canonicalQuery,
-      canonicalHeaders,
-      signedHeaders,
-      "UNSIGNED-PAYLOAD",
-    ].join("\n");
-    const stringToSign = [
-      "AWS4-HMAC-SHA256",
-      amzDate,
-      credentialScope,
-      await sha256Hex(canonicalRequest),
-    ].join("\n");
-    const signingKey = await signingKeyBytes(this.secretAccessKey, dateStamp, this.region, "s3");
-    const signature = toHex(await hmac(signingKey, stringToSign));
-    const authorization = `AWS4-HMAC-SHA256 Credential=${this.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
-
-    const requestHeaders = new Headers();
-    for (const [name, value] of Object.entries(signedHeadersMap)) {
-      if (name !== "host") {
-        requestHeaders.set(name, value);
-      }
-    }
-    requestHeaders.set("authorization", authorization);
-
     const target = `${endpoint.protocol}//${endpoint.host}${canonicalUri}${
       canonicalQuery ? `?${canonicalQuery}` : ""
     }`;
-    const response = await fetch(target, {
-      method,
-      headers: requestHeaders,
-      body,
-    });
+    const attempts = Math.max(1, maxAttempts);
 
-    if (expectOk) {
-      await assertOk(response, method, key || this.bucket);
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      const now = new Date();
+      const amzDate = formatAmzDate(now);
+      const dateStamp = amzDate.slice(0, 8);
+      const credentialScope = `${dateStamp}/${this.region}/s3/aws4_request`;
+      const signedHeadersMap = normalizeHeaders({
+        ...headers,
+        host: endpoint.host,
+        "x-amz-content-sha256": "UNSIGNED-PAYLOAD",
+        "x-amz-date": amzDate,
+      });
+      const signedHeaderNames = Object.keys(signedHeadersMap).sort();
+      const canonicalHeaders = signedHeaderNames
+        .map((name) => `${name}:${signedHeadersMap[name]}\n`)
+        .join("");
+      const signedHeaders = signedHeaderNames.join(";");
+      const canonicalRequest = [
+        method,
+        canonicalUri,
+        canonicalQuery,
+        canonicalHeaders,
+        signedHeaders,
+        "UNSIGNED-PAYLOAD",
+      ].join("\n");
+      const stringToSign = [
+        "AWS4-HMAC-SHA256",
+        amzDate,
+        credentialScope,
+        await sha256Hex(canonicalRequest),
+      ].join("\n");
+      const signingKey = await signingKeyBytes(this.secretAccessKey, dateStamp, this.region, "s3");
+      const signature = toHex(await hmac(signingKey, stringToSign));
+      const authorization = `AWS4-HMAC-SHA256 Credential=${this.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+      const requestHeaders = new Headers();
+      for (const [name, value] of Object.entries(signedHeadersMap)) {
+        if (name !== "host") {
+          requestHeaders.set(name, value);
+        }
+      }
+      requestHeaders.set("authorization", authorization);
+
+      let response;
+      try {
+        response = await fetch(target, {
+          method,
+          headers: requestHeaders,
+          body,
+          ...(timeoutMs > 0 ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
+        });
+      } catch (error) {
+        if (attempt < attempts) {
+          const delayMs = computeRetryDelayMs(attempt, this.retryBaseDelayMs, this.retryMaxDelayMs);
+          console.warn(
+            JSON.stringify({
+              event: "secondary_s3_request_retry",
+              operation,
+              target: targetLabel,
+              attempt,
+              maxAttempts: attempts,
+              delayMs,
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          );
+          await sleepMs(delayMs);
+          continue;
+        }
+        throw error;
+      }
+
+      if (isRetryableS3Status(response.status) && attempt < attempts) {
+        const delayMs = computeRetryDelayMs(attempt, this.retryBaseDelayMs, this.retryMaxDelayMs);
+        await cancelResponseBody(response);
+        console.warn(
+          JSON.stringify({
+            event: "secondary_s3_request_retry",
+            operation,
+            target: targetLabel,
+            attempt,
+            maxAttempts: attempts,
+            delayMs,
+            status: response.status,
+          }),
+        );
+        await sleepMs(delayMs);
+        continue;
+      }
+
+      if (expectOk) {
+        await assertOk(response, operation, targetLabel);
+      }
+      return response;
     }
-    return response;
+
+    throw new Error(`S3 ${operation} ${targetLabel} exhausted ${attempts} attempts.`);
   }
 }
 
@@ -1086,6 +1301,16 @@ export function workflowInstanceId(releaseTag, salt = "") {
 
 function shouldRestartState(state) {
   return state === "errored" || state === "terminated" || state === "unknown";
+}
+
+function isActiveWorkflowState(state) {
+  return (
+    state === "queued" ||
+    state === "running" ||
+    state === "waiting" ||
+    state === "waitingForPause" ||
+    state === "paused"
+  );
 }
 
 export function normalizeWorkflowState(status) {
@@ -1176,6 +1401,53 @@ function parseNonNegativeInteger(value, fallback) {
     return fallback;
   }
   return parsed;
+}
+
+function parsePositiveInteger(value, fallback) {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+  const parsed = Number.parseInt(String(value), 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return fallback;
+  }
+  return parsed;
+}
+
+function isRetryableS3Status(status) {
+  return status === 408 || status === 429 || (status >= 500 && status !== 501 && status !== 505);
+}
+
+function isRetryableCopyError(error) {
+  const message = error instanceof Error ? error.message : String(error || "");
+  const statusMatch = /failed with HTTP (\d+)/.exec(message);
+  if (statusMatch) {
+    return isRetryableS3Status(Number.parseInt(statusMatch[1], 10));
+  }
+  return !message.startsWith("S3 ");
+}
+
+function computeRetryDelayMs(attempt, baseDelayMs, maxDelayMs) {
+  if (baseDelayMs <= 0) {
+    return 0;
+  }
+  const exponential = Math.min(maxDelayMs, baseDelayMs * 2 ** Math.max(0, attempt - 1));
+  return Math.round(exponential * (0.75 + Math.random() * 0.5));
+}
+
+async function cancelResponseBody(response) {
+  try {
+    await response?.body?.cancel();
+  } catch {
+    // Ignore cancellation errors on broken upstream sockets.
+  }
+}
+
+function sleepMs(ms) {
+  if (ms <= 0) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function cleanPrefix(prefix) {

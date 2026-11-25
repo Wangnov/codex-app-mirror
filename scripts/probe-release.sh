@@ -11,6 +11,7 @@ arm_appcast_url="https://persistent.oaistatic.com/codex-app-prod/appcast.xml"
 x64_appcast_url="https://persistent.oaistatic.com/codex-app-prod/appcast-x64.xml"
 windows_update_manifest_url="https://persistent.oaistatic.com/codex-app-prod/windows-store-update.json"
 r2_public_base_url="${R2_PUBLIC_BASE_URL:-https://codexapp.agentsmirror.com}"
+r2_origin_base_url="${R2_ORIGIN_BASE_URL:-$r2_public_base_url}"
 force_release="${FORCE_RELEASE:-false}"
 release_tag_input="${RELEASE_TAG:-}"
 manifest_path="${MANIFEST_PATH:-release-manifest.json}"
@@ -59,6 +60,7 @@ curl_range_headers() {
   echo "Fetching $label range headers: $(redact_url "$url")" >&2
   if curl -fsSL -L "${curl_retry_args[@]}" \
     --range 0-0 \
+    --max-filesize 1048576 \
     -D "$headers_file" \
     -o /dev/null \
     "$url"; then
@@ -68,6 +70,44 @@ curl_range_headers() {
   fi
 
   rm -f "$headers_file"
+  return 1
+}
+
+last_header_block() {
+  tr -d '\r' <<<"$1" |
+    awk '
+      /^HTTP\/[0-9.]+[[:space:]]+[0-9]+/ { block = $0 "\n"; next }
+      { block = block $0 "\n" }
+      END { printf "%s", block }
+    '
+}
+
+public_mirror_object_headers() {
+  local label="$1"
+  local url="$2"
+  local headers
+  local head_rc=0
+
+  echo "Fetching $label headers: $(redact_url "$url")" >&2
+  if headers="$(curl -fsSI -L \
+    --retry 3 \
+    --retry-delay 2 \
+    --retry-max-time 120 \
+    --connect-timeout 20 \
+    --max-time 60 \
+    "$url")"; then
+    last_header_block "$headers"
+    return 0
+  else
+    head_rc=$?
+    echo "HEAD probe for $label failed (curl exit $head_rc); falling back to range probe." >&2
+  fi
+
+  if headers="$(curl_range_headers "$label" "$url")"; then
+    last_header_block "$headers"
+    return 0
+  fi
+
   return 1
 }
 
@@ -510,6 +550,7 @@ public_mirror_current_latest_view() {
 
 public_mirror_manifest_key_matches() {
   local manifest="$1"
+  local provided_live_manifest="${2:-}"
   local dir
   local live_manifest
   local current_view
@@ -517,11 +558,15 @@ public_mirror_manifest_key_matches() {
   local live_key
 
   dir="$(mktemp -d)"
-  live_manifest="$dir/live-manifest.json"
   current_view="$dir/current-latest-view.json"
-  if ! curl_get "public mirror manifest" "$r2_public_base_url/latest/manifest?probe=$$" > "$live_manifest"; then
-    rm -rf "$dir"
-    return 1
+  if [[ -n "$provided_live_manifest" && -f "$provided_live_manifest" ]]; then
+    live_manifest="$provided_live_manifest"
+  else
+    live_manifest="$dir/live-manifest.json"
+    if ! curl_get "public mirror manifest" "$r2_public_base_url/latest/manifest?probe=$$" > "$live_manifest"; then
+      rm -rf "$dir"
+      return 1
+    fi
   fi
 
   if ! public_mirror_current_latest_view "$manifest" "$live_manifest" "$current_view"; then
@@ -575,7 +620,7 @@ public_mirror_object_exists() {
   local label="$1"
   local object_path="$2"
 
-  curl_range_headers "$label" "$r2_public_base_url/$object_path?probe=$$" >/dev/null
+  public_mirror_object_headers "$label" "$r2_origin_base_url/$object_path?probe=$$" >/dev/null
 }
 
 public_mirror_object_size_matches() {
@@ -590,7 +635,7 @@ public_mirror_object_size_matches() {
     return
   fi
 
-  if ! headers="$(curl_range_headers "$label" "$r2_public_base_url/$object_path?probe=$$")"; then
+  if ! headers="$(public_mirror_object_headers "$label" "$r2_origin_base_url/$object_path?probe=$$")"; then
     return 1
   fi
   if ! actual_size="$(object_size_from_range_headers "$headers")"; then
@@ -602,14 +647,19 @@ public_mirror_object_size_matches() {
 
 public_mirror_checksums_match() {
   local manifest="$1"
+  local provided_live_manifest="${2:-}"
   local dir
   local live_manifest
 
   dir="$(mktemp -d)"
-  live_manifest="$dir/live-manifest.json"
-  if ! curl_get "public mirror manifest" "$r2_public_base_url/latest/manifest?probe=$$" > "$live_manifest"; then
-    rm -rf "$dir"
-    return 1
+  if [[ -n "$provided_live_manifest" && -f "$provided_live_manifest" ]]; then
+    live_manifest="$provided_live_manifest"
+  else
+    live_manifest="$dir/live-manifest.json"
+    if ! curl_get "public mirror manifest" "$r2_public_base_url/latest/manifest?probe=$$" > "$live_manifest"; then
+      rm -rf "$dir"
+      return 1
+    fi
   fi
   if ! curl_get "public mirror checksums" "$r2_public_base_url/latest/checksums?probe=$$" > "$dir/live-SHA256SUMS.txt"; then
     rm -rf "$dir"
@@ -667,6 +717,7 @@ public_mirror_checksums_match() {
 
 public_mirror_objects_match() {
   local manifest="$1"
+  local provided_live_manifest="${2:-}"
   local dir
   local live_manifest
   local current_view
@@ -674,11 +725,15 @@ public_mirror_objects_match() {
   local x64_mirror_basename
 
   dir="$(mktemp -d)"
-  live_manifest="$dir/live-manifest.json"
   current_view="$dir/current-latest-view.json"
-  if ! curl_get "public mirror manifest" "$r2_public_base_url/latest/manifest?probe=$$" > "$live_manifest"; then
-    rm -rf "$dir"
-    return 1
+  if [[ -n "$provided_live_manifest" && -f "$provided_live_manifest" ]]; then
+    live_manifest="$provided_live_manifest"
+  else
+    live_manifest="$dir/live-manifest.json"
+    if ! curl_get "public mirror manifest" "$r2_public_base_url/latest/manifest?probe=$$" > "$live_manifest"; then
+      rm -rf "$dir"
+      return 1
+    fi
   fi
   if ! public_mirror_current_latest_view "$manifest" "$live_manifest" "$current_view"; then
     rm -rf "$dir"
@@ -761,11 +816,26 @@ public_mirror_delta_objects_match() {
 public_mirror_latest_matches() {
   local manifest="$1"
   local tag="$2"
+  local dir
+  local live_manifest
 
-  public_mirror_manifest_key_matches "$manifest" &&
-    public_mirror_appcasts_match "$manifest" &&
-    public_mirror_checksums_match "$manifest" &&
-    public_mirror_objects_match "$manifest"
+  dir="$(mktemp -d)"
+  live_manifest="$dir/live-manifest.json"
+  if ! curl_get "public mirror manifest" "$r2_public_base_url/latest/manifest?probe=$$" > "$live_manifest"; then
+    rm -rf "$dir"
+    return 1
+  fi
+
+  if public_mirror_manifest_key_matches "$manifest" "$live_manifest" &&
+     public_mirror_appcasts_match "$manifest" &&
+     public_mirror_checksums_match "$manifest" "$live_manifest" &&
+     public_mirror_objects_match "$manifest" "$live_manifest"; then
+    rm -rf "$dir"
+    return 0
+  fi
+
+  rm -rf "$dir"
+  return 1
 }
 
 github_output_value() {

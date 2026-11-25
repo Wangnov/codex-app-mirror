@@ -47,7 +47,11 @@ These are strictly separate and must not leak into each other:
 `mirror.yml` runs: **probe → compare against the latest release manifest →
 download only if changed → checksum + manifest + appcast → publish Release →
 sync to R2 → trigger secondary S3 sync**. No upstream change means no
-download and no duplicate release.
+download and no duplicate release. During `probe`, metadata endpoints
+(`manifest`, `appcast*.xml`, `checksums`) are checked through
+`R2_PUBLIC_BASE_URL` (download router), while large binary object sizes are
+checked via `HEAD` against `R2_ORIGIN_BASE_URL` (`codexapp-r2.agentsmirror.com`)
+to avoid download-router rate limits and analytics noise.
 
 `latest/manifest`, `latest/checksums`, `latest/win-*`, and the macOS appcasts
 are one **consistency unit** — R2/S3 have no cross-object transactions, so
