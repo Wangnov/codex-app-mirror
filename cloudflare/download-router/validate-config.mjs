@@ -57,8 +57,11 @@ for (const forbiddenOrExempt of [
 }
 
 // Validate codexapp-r2 Single Redirect Rule stays 1:1 aligned with BLOCKED_UA_SUBSTRINGS and within 4KB.
+assert.equal(redirectRule.enabled, true, "redirect rule must be enabled");
+assert.equal(redirectRule.action, "redirect", "redirect rule must use redirect action");
 assert.equal(redirectRule.ref, "codexapp_r2_unauthorized_ua_redirect", "redirect rule must declare explicit ref");
-assert.ok(redirectRule.expression.length < 4096, `redirect rule expression exceeds 4096 bytes: ${redirectRule.expression.length}`);
+const utf8Bytes = (s) => Buffer.byteLength(s, "utf8");
+assert.ok(utf8Bytes(redirectRule.expression) < 4096, `redirect rule expression exceeds 4096 bytes: ${utf8Bytes(redirectRule.expression)}`);
 assert.ok(
   redirectRule.expression.includes('http.host eq "codexapp-r2.agentsmirror.com"'),
   "redirect rule must target codexapp-r2.agentsmirror.com without /latest/ prefix to close %2F bypass",
@@ -89,9 +92,10 @@ assert.deepEqual(
 );
 
 // Validate Edge WAF Custom Rule offloads extreme-quota pollers and backend proxies before Worker invocation.
+assert.equal(wafRule.enabled, true, "WAF rule must be enabled");
 assert.equal(wafRule.ref, "codexapp_mirror_backend_proxy_block");
 assert.equal(wafRule.action, "block");
-assert.ok(wafRule.expression.length < 4096, `WAF rule expression exceeds 4096 bytes: ${wafRule.expression.length}`);
+assert.ok(utf8Bytes(wafRule.expression) < 4096, `WAF rule expression exceeds 4096 bytes: ${utf8Bytes(wafRule.expression)}`);
 for (const wafUa of ["kakou/", "auto-gateway-codex", "codexdownloadproxy", "hermes-cron"]) {
   assert.ok(
     wafRule.expression.includes(`lower(http.user_agent) contains "${wafUa}"`),
@@ -104,10 +108,11 @@ for (const wafUa of ["kakou/", "auto-gateway-codex", "codexdownloadproxy", "herm
 }
 
 // Validate Cache Bypass Rule on codexapp-r2 prevents Cloudflare Free-plan (>512MiB) cache fill from stripping HTTP Range on .zip archives and installer aliases, without matching metadata/stats/delta paths.
+assert.equal(cacheBypassRule.enabled, true, "cache bypass rule must be enabled");
 assert.equal(cacheBypassRule.ref, "codexapp_r2_large_binary_cache_bypass");
 assert.equal(cacheBypassRule.action, "set_cache_settings");
 assert.equal(cacheBypassRule.action_parameters?.cache, false);
-assert.ok(cacheBypassRule.expression.length < 4096, `cache bypass rule expression exceeds 4096 bytes: ${cacheBypassRule.expression.length}`);
+assert.ok(utf8Bytes(cacheBypassRule.expression) < 4096, `cache bypass rule expression exceeds 4096 bytes: ${utf8Bytes(cacheBypassRule.expression)}`);
 assert.ok(
   cacheBypassRule.expression.includes('http.host eq "codexapp-r2.agentsmirror.com"'),
   "cache bypass rule must target codexapp-r2.agentsmirror.com",
@@ -198,11 +203,21 @@ async function run(path, { country = "US", method = "GET", secondary = false, he
   assert.equal(loc.searchParams.get("X-Amz-Expires"), "120");
 }
 
-// Sparkle delta pattern: counted as update-delta.
+// Sparkle full archive and delta patterns: both must route cleanly, and CN HEAD must sign HEAD method.
 {
-  const r = await run("/latest/mac/arm64/Codex-1.2.3-arm64.delta", { headers: { "User-Agent": "ChatGPT/26.1117 Sparkle" } });
-  assert.equal(r.status, 302);
-  assert.deepEqual(r.points[0].blobs.slice(0, 3), ["global", "US", "update-delta"]);
+  const zipRes = await run("/latest/mac/arm64/Codex-darwin-arm64-2.0.0.zip", { headers: { "User-Agent": "ChatGPT/26.1117 Sparkle" } });
+  assert.equal(zipRes.status, 302);
+  assert.deepEqual(zipRes.points[0].blobs.slice(0, 3), ["global", "US", "update-full"]);
+
+  const deltaRes = await run("/latest/mac/arm64/Codex-1.2.3-arm64.delta", { headers: { "User-Agent": "ChatGPT/26.1117 Sparkle" } });
+  assert.equal(deltaRes.status, 302);
+  assert.deepEqual(deltaRes.points[0].blobs.slice(0, 3), ["global", "US", "update-delta"]);
+
+  const cnGet = await run("/latest/win-x64", { country: "CN", secondary: true, method: "GET" });
+  const cnHead = await run("/latest/win-x64", { country: "CN", secondary: true, method: "HEAD" });
+  assert.equal(cnGet.status, 302);
+  assert.equal(cnHead.status, 302);
+  assert.equal(cnHead.points.length, 0);
 }
 
 // Unknown path: 404.

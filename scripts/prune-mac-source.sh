@@ -65,6 +65,7 @@ appcast_enclosure_basenames() {
   python3 - "$appcast" <<'PY'
 import sys
 import xml.etree.ElementTree as ET
+from urllib.parse import unquote, urlsplit
 
 SP = "{http://www.andymatuschak.org/xml-namespaces/sparkle}"
 item = ET.parse(sys.argv[1]).getroot().find("./channel/item")
@@ -73,13 +74,13 @@ if item is None:
 names = []
 top = item.find("enclosure")
 if top is not None and top.attrib.get("url"):
-    names.append(top.attrib["url"].rsplit("/", 1)[-1])
+    names.append(unquote(urlsplit(top.attrib["url"]).path.rsplit("/", 1)[-1]))
 deltas = item.find(SP + "deltas")
 if deltas is not None:
     for enc in deltas.findall("enclosure"):
         url = enc.attrib.get("url", "")
         if url:
-            names.append(url.rsplit("/", 1)[-1])
+            names.append(unquote(urlsplit(url).path.rsplit("/", 1)[-1]))
 for name in names:
     if name:
         print(name)
@@ -125,7 +126,7 @@ aws s3api list-objects-v2 \
   --endpoint-url "$R2_S3_ENDPOINT" \
   --region "$region" \
   --query 'Contents[].[Key,LastModified]' \
-  --output text 2>/dev/null | while read -r key lastmod _rest; do
+  --output text 2>/dev/null | while IFS=$'\t' read -r key lastmod _rest; do
   [[ -z "$key" || "$key" == "None" ]] && continue
   [[ "$key" == */ ]] && continue
 

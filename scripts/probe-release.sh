@@ -11,7 +11,9 @@ arm_appcast_url="https://persistent.oaistatic.com/codex-app-prod/appcast.xml"
 x64_appcast_url="https://persistent.oaistatic.com/codex-app-prod/appcast-x64.xml"
 windows_update_manifest_url="https://persistent.oaistatic.com/codex-app-prod/windows-store-update.json"
 r2_public_base_url="${R2_PUBLIC_BASE_URL:-https://codexapp.agentsmirror.com}"
+r2_public_base_url="${r2_public_base_url%/}"
 r2_origin_base_url="${R2_ORIGIN_BASE_URL:-$r2_public_base_url}"
+r2_origin_base_url="${r2_origin_base_url%/}"
 force_release="${FORCE_RELEASE:-false}"
 release_tag_input="${RELEASE_TAG:-}"
 manifest_path="${MANIFEST_PATH:-release-manifest.json}"
@@ -82,24 +84,52 @@ last_header_block() {
     '
 }
 
+http_status_code() {
+  local headers="$1"
+  tr -d '\r' <<<"$headers" |
+    awk '
+      /^HTTP\/[0-9.]+[[:space:]]+[0-9]+/ { code = $2 }
+      END { printf "%s", code }
+    '
+}
+
+urlencode_path_segment() {
+  jq -rn --arg v "$1" '$v | @uri'
+}
+
 public_mirror_object_headers() {
   local label="$1"
   local url="$2"
-  local headers
+  local headers=""
+  local final_headers=""
+  local head_status=""
   local head_rc=0
 
   echo "Fetching $label headers: $(redact_url "$url")" >&2
-  if headers="$(curl -fsSI -L \
+  if headers="$(curl -sSI -L \
     --retry 3 \
     --retry-delay 2 \
     --retry-max-time 120 \
     --connect-timeout 20 \
     --max-time 60 \
     "$url")"; then
-    last_header_block "$headers"
-    return 0
+    final_headers="$(last_header_block "$headers")"
+    head_status="$(http_status_code "$final_headers")"
+    if [[ "$head_status" == "200" ]] && object_size_from_range_headers "$final_headers" >/dev/null; then
+      printf '%s' "$final_headers"
+      return 0
+    fi
+    if [[ "$head_status" != "403" && "$head_status" != "405" && "$head_status" != "501" && "$head_status" != "200" ]]; then
+      echo "HEAD probe for $label returned HTTP ${head_status:-unknown}; skipping range fallback." >&2
+      return 1
+    fi
+    echo "HEAD probe for $label returned HTTP $head_status without usable size; falling back to range probe." >&2
   else
     head_rc=$?
+    if [[ "$head_rc" -ne 22 ]]; then
+      echo "HEAD probe for $label failed with transport exit $head_rc." >&2
+      return 1
+    fi
     echo "HEAD probe for $label failed (curl exit $head_rc); falling back to range probe." >&2
   fi
 
@@ -140,20 +170,32 @@ json_number() {
 }
 
 object_size_from_range_headers() {
-  local headers="$1"
+  local headers
+  local status
   local content_range
   local content_length
 
-  content_range="$(header_value "$headers" "content-range")"
-  if [[ "$content_range" =~ /([0-9]+)$ ]]; then
-    printf '%s' "${BASH_REMATCH[1]}"
-    return 0
+  headers="$(last_header_block "$1")"
+  status="$(http_status_code "$headers")"
+  if [[ "$status" != "200" && "$status" != "206" ]]; then
+    return 1
   fi
 
-  content_length="$(header_value "$headers" "content-length")"
-  if [[ "$content_length" =~ ^[0-9]+$ ]]; then
-    printf '%s' "$content_length"
-    return 0
+  content_range="$(header_value "$headers" "content-range")"
+  if [[ -n "$content_range" ]]; then
+    if [[ "$content_range" =~ ^bytes[[:space:]]+[0-9]+-[0-9]+/([1-9][0-9]*)$ ]]; then
+      printf '%s' "${BASH_REMATCH[1]}"
+      return 0
+    fi
+    return 1
+  fi
+
+  if [[ "$status" == "200" ]]; then
+    content_length="$(header_value "$headers" "content-length")"
+    if [[ "$content_length" =~ ^[1-9][0-9]*$ ]]; then
+      printf '%s' "$content_length"
+      return 0
+    fi
   fi
 
   return 1
@@ -162,20 +204,27 @@ object_size_from_range_headers() {
 source_object_size() {
   local label="$1"
   local url="$2"
-  local headers
-  local size
+  local headers=""
+  local size=""
 
   if [[ -z "$url" || "$url" == "null" ]]; then
     echo "Missing $label URL; cannot determine source object size." >&2
     return 1
   fi
 
-  if ! headers="$(curl_range_headers "$label" "$url")"; then
+  if headers="$(curl_range_headers "$label" "$url")" &&
+     size="$(object_size_from_range_headers "$headers")"; then
+    printf '%s' "$size"
+    return 0
+  fi
+
+  echo "Range size probe for $label was inconclusive; falling back to HEAD probe." >&2
+  if ! headers="$(curl_head "$label" "$url")"; then
     echo "Failed to fetch $label source object size." >&2
     return 1
   fi
   if ! size="$(object_size_from_range_headers "$headers")"; then
-    echo "Could not determine $label source object size from range headers." >&2
+    echo "Could not determine $label source object size from headers." >&2
     return 1
   fi
 
@@ -203,7 +252,7 @@ derive_macos_dmg_url() {
 
   python3 - "$enclosure_url" "$arch" "$version" <<'PY'
 import sys
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import unquote, urlsplit, urlunsplit
 
 url, arch, version = sys.argv[1:]
 parts = urlsplit(url)
@@ -257,7 +306,7 @@ appcast_latest() {
 import json
 import sys
 import xml.etree.ElementTree as ET
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 SPARKLE = "http://www.andymatuschak.org/xml-namespaces/sparkle"
 ns = {"sparkle": SPARKLE}
@@ -280,7 +329,7 @@ def safe_archive_basename(value, extension, label):
     parts = urlsplit(value)
     if parts.scheme != "https" or not parts.netloc:
         raise SystemExit(f"{label} URL is not an absolute HTTPS URL: {value!r}")
-    basename = parts.path.rsplit("/", 1)[-1]
+    basename = unquote(parts.path.rsplit("/", 1)[-1])
     if not basename or not basename.endswith(f".{extension}"):
         raise SystemExit(f"{label} has invalid .{extension} basename: {basename!r}")
     if any(part in basename for part in ("/", "\\", "..")) or any(
@@ -623,6 +672,52 @@ public_mirror_object_exists() {
   public_mirror_object_headers "$label" "$r2_origin_base_url/$object_path?probe=$$" >/dev/null
 }
 
+public_mirror_object_absent() {
+  local label="$1"
+  local object_path="$2"
+  local url="$r2_origin_base_url/$object_path?probe=$$"
+  local headers=""
+  local final_headers=""
+  local status=""
+
+  echo "Checking absence of $label: $(redact_url "$url")" >&2
+  if headers="$(curl -sSI -L \
+    --retry 3 \
+    --retry-delay 2 \
+    --retry-max-time 120 \
+    --connect-timeout 20 \
+    --max-time 60 \
+    "$url")"; then
+    final_headers="$(last_header_block "$headers")"
+    status="$(http_status_code "$final_headers")"
+    if [[ "$status" == "404" ]]; then
+      return 0
+    fi
+    if [[ "$status" != "403" && "$status" != "405" && "$status" != "501" ]]; then
+      return 1
+    fi
+  fi
+
+  local headers_file
+  headers_file="$(mktemp)"
+  if curl -sSL -L \
+    --retry 3 \
+    --retry-delay 2 \
+    --retry-max-time 120 \
+    --connect-timeout 20 \
+    --max-time 60 \
+    --range 0-0 \
+    --max-filesize 1048576 \
+    -D "$headers_file" \
+    -o /dev/null \
+    "$url"; then
+    final_headers="$(last_header_block "$(cat "$headers_file")")"
+    status="$(http_status_code "$final_headers")"
+  fi
+  rm -f "$headers_file"
+  [[ "$status" == "404" ]]
+}
+
 public_mirror_object_size_matches() {
   local label="$1"
   local object_path="$2"
@@ -762,7 +857,7 @@ public_mirror_objects_match() {
           "latest/win-arm64" \
           "$(jq -r '.sources.windows.architectures.arm64.contentLength // 0' "$manifest")"
       else
-        true
+        public_mirror_object_absent "stale public mirror Windows arm64 alias" "latest/win-arm64"
       fi
     } &&
     public_mirror_object_size_matches \
@@ -775,11 +870,11 @@ public_mirror_objects_match() {
       "$(jq -r '.sources.macos.x64.contentLength // 0' "$manifest")" &&
     public_mirror_object_size_matches \
       "public mirror macOS arm64 Sparkle archive" \
-      "latest/mac/arm64/${arm_mirror_basename}" \
+      "latest/mac/arm64/$(urlencode_path_segment "$arm_mirror_basename")" \
       "$(jq -r '.sources.macos.arm64.appcast.enclosureLength // 0' "$manifest")" &&
     public_mirror_object_size_matches \
       "public mirror macOS x64 Sparkle archive" \
-      "latest/mac/intel/${x64_mirror_basename}" \
+      "latest/mac/intel/$(urlencode_path_segment "$x64_mirror_basename")" \
       "$(jq -r '.sources.macos.x64.appcast.enclosureLength // 0' "$manifest")" &&
     public_mirror_delta_objects_match "$manifest" arm64 arm64 &&
     public_mirror_delta_objects_match "$manifest" x64 intel; then
@@ -802,14 +897,24 @@ public_mirror_delta_objects_match() {
     [[ -n "$basename" ]] || return 1
     public_mirror_object_size_matches \
       "public mirror macOS $arch_key delta $basename" \
-      "latest/mac/$mirror_dir/$basename" \
+      "latest/mac/$mirror_dir/$(urlencode_path_segment "$basename")" \
       "$expected_size" || return 1
   done < <(
-    jq -r --arg a "$arch_key" '
-      .sources.macos[$a].appcast.deltas[]?
-      | [(.basename // ((.url // "") | split("/")[-1]) // ""), (.length // 0)]
-      | @tsv
-    ' "$manifest"
+    python3 - "$manifest" "$arch_key" <<'PY'
+import json
+import sys
+from urllib.parse import unquote, urlsplit
+
+manifest_path, arch = sys.argv[1], sys.argv[2]
+data = json.load(open(manifest_path, encoding="utf-8"))
+deltas = (((data.get("sources") or {}).get("macos") or {}).get(arch) or {}).get("appcast", {}).get("deltas") or []
+for d in deltas:
+    raw_url = d.get("url") or ""
+    seg = urlsplit(raw_url).path.rsplit("/", 1)[-1] if raw_url else ""
+    name = d.get("basename") or unquote(seg)
+    length = d.get("length") or 0
+    print(f"{name}\t{length}")
+PY
   )
 }
 

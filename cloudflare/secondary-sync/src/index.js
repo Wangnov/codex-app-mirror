@@ -1,18 +1,26 @@
 import { WorkflowEntrypoint } from "cloudflare:workers";
+import { NonRetryableError } from "cloudflare:workflows";
 import {
   NonRetryableMirrorError,
+  aliasBackupKeys,
   buildObjectPlan,
+  cleanupRollbackBackups,
   cleanupStageObjects,
-  commitObjectToAliases,
   commitOrder,
-  deleteStaleAliasObjects,
+  commitSingleAlias,
   decoratePlanWithStage,
+  deleteStaleAliasObjects,
   discoverSourceManifest,
   handleApiRequest,
+  isSupersededError,
   pruneAbandonedStageObjects,
   pruneStaleLatestMacObjects,
   reconcileSync,
+  recordSwitchoverCommittedCheckpoint,
+  rollbackCommittedAliases,
   uploadObjectToStage,
+  verifyPriorSwitchoverCheckpoint,
+  verifySourceManifestCurrent,
 } from "./core.js";
 
 const DISCOVERY_STEP = {
@@ -25,67 +33,189 @@ const UPLOAD_STEP = {
 };
 const COMMIT_STEP = {
   retries: { limit: 3, delay: "10 seconds", backoff: "linear" },
-  timeout: "5 minutes",
+  timeout: "15 minutes",
 };
 const HOUSEKEEPING_STEP = {
   retries: { limit: 3, delay: "10 seconds", backoff: "linear" },
   timeout: "10 minutes",
 };
-const RuntimeNonRetryableError = globalThis.NonRetryableError || Error;
+const RuntimeNonRetryableError = NonRetryableError || globalThis.NonRetryableError || Error;
 
 export class SecondaryMirrorWorkflow extends WorkflowEntrypoint {
   async run(event, step) {
     const payload = event.payload || {};
 
     const source = await step.do("discover source manifest", DISCOVERY_STEP, () =>
-      nonRetryableGuard(() => discoverSourceManifest(this.env, payload.releaseTag || "")),
+      nonRetryableGuard(() =>
+        discoverSourceManifest(
+          this.env,
+          payload.releaseTag || "",
+          payload.manifestSha256 || "",
+          {
+            instanceId: event.instanceId,
+            claimPointer: true,
+          },
+        ),
+      ),
     );
 
-    const plan = decoratePlanWithStage(
-      buildObjectPlan(source.manifest, source.releaseTag),
+    let plan = decoratePlanWithStage(
+      {
+        releaseTag: source.releaseTag,
+        items: [],
+        staleAliasKeys: [],
+        keepLatestMacKeys: [],
+      },
       event.instanceId,
       this.env,
     );
-
-    const abandonedStageResult = await step.do(
-      "prune abandoned secondary staging",
-      HOUSEKEEPING_STEP,
-      () => nonRetryableGuard(() => pruneAbandonedStageObjects(this.env, plan.stagePrefix)),
-    );
-
+    let abandonedStageResult = { deleted: [], aborted: [] };
+    const committedAliases = [];
+    const attemptedAliases = [];
+    let commitStarted = false;
+    let switchoverComplete = false;
     try {
-      const uploadResults = [];
-      for (const item of plan.items) {
-        uploadResults.push(
-          await step.do(stepName("upload", item), UPLOAD_STEP, () =>
+      plan = decoratePlanWithStage(
+        buildObjectPlan(source.manifest, source.releaseTag, {
+          manifestText: source.manifestText,
+          manifestSha256: source.manifestSha256,
+          secondaryPrefix: this.env.SECONDARY_S3_PREFIX || "",
+          publicBaseUrl: this.env.PUBLIC_BASE_URL || "",
+        }),
+        event.instanceId,
+        this.env,
+      );
+
+      abandonedStageResult = await step.do(
+        "prune abandoned secondary staging",
+        HOUSEKEEPING_STEP,
+        () => nonRetryableGuard(() => pruneAbandonedStageObjects(this.env, plan.stagePrefix)),
+      );
+
+      const priorCommitted = await step.do(
+        "check prior switchover checkpoint",
+        DISCOVERY_STEP,
+        () =>
+          nonRetryableGuard(() =>
+            verifyPriorSwitchoverCheckpoint(this.env, source, plan, {
+              instanceId: event.instanceId,
+              force: Boolean(payload.force),
+            }),
+          ),
+      );
+
+      let uploadResults = [];
+      if (priorCommitted?.completed === true) {
+        switchoverComplete = true;
+        committedAliases.push(...(priorCommitted.entries || []));
+      } else {
+        const uploadedShaById = new Map();
+        for (const item of plan.items) {
+          const uploadRes = await step.do(stepName("upload", item), UPLOAD_STEP, () =>
             nonRetryableGuard(() =>
               uploadObjectToStage(this.env, item, {
                 forceUpload: Boolean(payload.force),
               }),
             ),
+          );
+          uploadResults.push(uploadRes);
+          if (uploadRes?.sha256) {
+            uploadedShaById.set(item.id, uploadRes.sha256);
+          }
+        }
+
+        await step.do("verify source manifest still current", DISCOVERY_STEP, () =>
+          nonRetryableGuard(() =>
+            verifySourceManifestCurrent(this.env, source.manifestSha256, {
+              instanceId: event.instanceId,
+              requirePointer: true,
+            }),
+          ),
+        );
+
+        commitStarted = true;
+        for (const item of commitOrder(plan.items)) {
+          for (const aliasKey of item.aliasKeys) {
+            const detKeys = aliasBackupKeys(item.stageKey, aliasKey, plan.stagePrefix);
+            attemptedAliases.push({
+              aliasKey,
+              stageKey: item.stageKey,
+              backupKey: detKeys.backupKey,
+              stateKey: detKeys.stateKey,
+              hadExisting: true,
+              optionalIfNoState: true,
+            });
+            const aliasResult = await step.do(
+              aliasStepName("commit", item.id, aliasKey),
+              COMMIT_STEP,
+              () =>
+                nonRetryableGuard(() =>
+                  commitSingleAlias(this.env, item.stageKey, aliasKey, {
+                    keepBackup: true,
+                    expectedManifestSha256: source.manifestSha256,
+                    instanceId: event.instanceId,
+                    stagePrefix: plan.stagePrefix,
+                    force: Boolean(payload.force),
+                    itemExpectedSha256: uploadedShaById.get(item.id) || item.expectedSha256 || "",
+                    itemExpectedManifestSha256: item.expectedManifestSha256 || "",
+                    itemExpectedChecksums: item.expectedChecksums || null,
+                    itemExpectedAppcast: item.expectedAppcast || null,
+                  }),
+                ),
+            );
+            committedAliases.push(aliasResult);
+          }
+        }
+        switchoverComplete = true;
+
+        await step.do("record switchover committed", COMMIT_STEP, () =>
+          nonRetryableGuard(() =>
+            recordSwitchoverCommittedCheckpoint(this.env, plan.stagePrefix, committedAliases, {
+              releaseTag: source.releaseTag,
+              manifestSha256: source.manifestSha256,
+              instanceId: event.instanceId,
+            }),
           ),
         );
       }
 
-      const commitResults = [];
-      for (const item of commitOrder(plan.items)) {
-        commitResults.push(
-          await step.do(stepName("commit", item), COMMIT_STEP, () =>
-            nonRetryableGuard(() => commitObjectToAliases(this.env, item)),
-          ),
-        );
-      }
+      await step.do("cleanup alias rollback backups", HOUSEKEEPING_STEP, () =>
+        nonRetryableGuard(() =>
+          cleanupRollbackBackups(this.env, committedAliases, {
+            expectedManifestSha256: source.manifestSha256,
+            instanceId: event.instanceId,
+            stagePrefix: plan.stagePrefix,
+            purgeSupersededOrphans: true,
+          }),
+        ),
+      );
 
       const staleAliasResult = await step.do("delete stale latest aliases", HOUSEKEEPING_STEP, () =>
-        nonRetryableGuard(() => deleteStaleAliasObjects(this.env, plan.staleAliasKeys)),
+        nonRetryableGuard(() =>
+          deleteStaleAliasObjects(this.env, plan.staleAliasKeys, {
+            expectedManifestSha256: source.manifestSha256,
+            instanceId: event.instanceId,
+          }),
+        ),
       );
 
       const pruneResult = await step.do("prune stale Sparkle archives", HOUSEKEEPING_STEP, () =>
-        nonRetryableGuard(() => pruneStaleLatestMacObjects(this.env, plan.keepLatestMacKeys)),
+        nonRetryableGuard(() =>
+          pruneStaleLatestMacObjects(this.env, plan.keepLatestMacKeys, {
+            expectedManifestSha256: source.manifestSha256,
+            instanceId: event.instanceId,
+          }),
+        ),
       );
 
       const cleanupResult = await step.do("cleanup secondary staging objects", HOUSEKEEPING_STEP, () =>
-        nonRetryableGuard(() => cleanupStageObjects(this.env, plan.items)),
+        nonRetryableGuard(() =>
+          cleanupStageObjects(this.env, plan.items, plan.stagePrefix, {
+            switchoverComplete: true,
+            expectedManifestSha256: source.manifestSha256,
+            instanceId: event.instanceId,
+          }),
+        ),
       );
 
       return {
@@ -95,16 +225,51 @@ export class SecondaryMirrorWorkflow extends WorkflowEntrypoint {
         abandonedStageObjectsDeleted: abandonedStageResult.deleted.length,
         abandonedMultipartUploadsAborted: abandonedStageResult.aborted.length,
         uploaded: uploadResults.length,
-        committed: commitResults.reduce((count, result) => count + result.aliases.length, 0),
+        committed: committedAliases.length,
         staleAliasesDeleted: staleAliasResult.deleted.length,
         pruned: pruneResult.pruned.length,
         cleaned: cleanupResult.deleted.length,
         completedAt: new Date().toISOString(),
       };
     } catch (error) {
+      let rollbackFailed = false;
+      if (!switchoverComplete && !isSupersededError(error)) {
+        try {
+          await step.do("rollback committed secondary aliases", HOUSEKEEPING_STEP, () =>
+            nonRetryableGuard(() => {
+              const committedSet = new Set(committedAliases.map((entry) => entry.aliasKey));
+              const recoveryEntries = [
+                ...committedAliases,
+                ...attemptedAliases.filter((entry) => !committedSet.has(entry.aliasKey)),
+              ];
+              return rollbackCommittedAliases(this.env, recoveryEntries, {
+                expectedManifestSha256: source.manifestSha256,
+                instanceId: event.instanceId,
+                stagePrefix: plan.stagePrefix,
+              });
+            }),
+          );
+        } catch (rollbackError) {
+          rollbackFailed = true;
+          console.error(
+            JSON.stringify({
+              event: "secondary_sync_group_rollback_failed",
+              stagePrefix: plan.stagePrefix,
+              error: rollbackError.message,
+            }),
+          );
+        }
+      }
       try {
         await step.do("cleanup failed secondary staging objects", HOUSEKEEPING_STEP, () =>
-          nonRetryableGuard(() => cleanupStageObjects(this.env, plan.items)),
+          nonRetryableGuard(() =>
+            cleanupStageObjects(this.env, plan.items, plan.stagePrefix, {
+              preserveBackups: rollbackFailed,
+              switchoverComplete,
+              expectedManifestSha256: source.manifestSha256,
+              instanceId: event.instanceId,
+            }),
+          ),
         );
       } catch (cleanupError) {
         console.error(
@@ -114,6 +279,9 @@ export class SecondaryMirrorWorkflow extends WorkflowEntrypoint {
             error: cleanupError.message,
           }),
         );
+      }
+      if (error instanceof NonRetryableMirrorError) {
+        throw new RuntimeNonRetryableError(error.message, error.name);
       }
       throw error;
     }
@@ -183,4 +351,12 @@ function stepName(prefix, item) {
     return name;
   }
   return `${name.slice(0, 150)}-${item.id.length}`;
+}
+
+function aliasStepName(prefix, itemId, aliasKey) {
+  const name = `${prefix} ${itemId}:${aliasKey}`;
+  if (name.length <= 180) {
+    return name;
+  }
+  return `${name.slice(0, 150)}-${aliasKey.length}`;
 }

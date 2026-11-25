@@ -353,6 +353,14 @@ headers_for_url() {
     *persistent.oaistatic.com/codex-app-prod/ChatGPT-darwin-x64-1.2.3.zip)
       emit_headers "source-zip-etag"
       ;;
+    *codexapp.agentsmirror.com/latest/win-arm64*|\
+    *codexapp-r2.agentsmirror.test/latest/win-arm64*)
+      if [[ "${TEST_STALE_ARM64_ALIAS:-false}" == "true" ]]; then
+        emit_headers "stale-arm64-etag"
+      else
+        printf 'HTTP/2 404\r\ncontent-length: 0\r\n\r\n'
+      fi
+      ;;
     *codexapp.agentsmirror.com/latest/win*|\
     *codexapp.agentsmirror.com/latest/mac-arm64*|\
     *codexapp.agentsmirror.com/latest/mac-intel*|\
@@ -385,8 +393,12 @@ if $head_request; then
     printf 'HEAD %s\n' "$url" >> "$TEST_CURL_LOG"
   fi
   if [[ "${TEST_FORCE_HEAD_403:-false}" == "true" && ( "$url" == *codexapp.agentsmirror.com/latest/* || "$url" == *codexapp-r2.agentsmirror.test/latest/* ) ]]; then
-    echo "simulated 403 on HEAD for presigned S3" >&2
-    exit 22
+    if [[ "$url" == *latest/win-arm64* && "${TEST_STALE_ARM64_ALIAS:-false}" != "true" ]]; then
+      printf 'HTTP/2 404\r\ncontent-length: 0\r\n\r\n'
+      exit 0
+    fi
+    printf 'HTTP/2 403\r\ncontent-length: 0\r\n\r\n'
+    exit 0
   fi
   headers_for_url
   exit 0

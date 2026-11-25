@@ -274,4 +274,65 @@ fi
 test "$(cat "$counter_path")" = "2"
 test ! -f "$tmp_dir/out-corrupt-fail/$expected_package.Msix"
 
+# Case 4: Malformed optional ARM64 catalog SHA-256 hash fails closed instead of silently skipping ARM64.
+jq --arg armPkg "$expected_arm64_package" '
+  .sources.windows.architectures.arm64 = {
+    "architecture": "arm64",
+    "status": "downloadable",
+    "downloadable": true,
+    "packageMoniker": $armPkg,
+    "contentLength": 4,
+    "catalog": {
+      "packageFullName": $armPkg,
+      "hashAlgorithm": "SHA256",
+      "hash": "bad!",
+      "contentLength": 4
+    }
+  }
+' "$tmp_dir/probe-manifest-catalog.json" > "$tmp_dir/probe-manifest-bad-arm-hash.json"
+
+if (
+  cd "$repo_root"
+  PATH="$tmp_dir/bin:$PATH" \
+  TEST_MODE="corrupt-once" \
+  TEST_STORE_LINK_COUNTER="$counter_path" \
+  TEST_OLD_PACKAGE="$old_package" \
+  TEST_EXPECTED_PACKAGE="$expected_package" \
+  TEST_CHANGED_ARM64_PACKAGE="$changed_arm64_package" \
+  TEST_HTTP_PORT="$port" \
+    pwsh -NoLogo -NoProfile -File scripts/download-windows.ps1 \
+      -OutDir "$tmp_dir/out-bad-arm-hash" \
+      -ManifestPath "$tmp_dir/probe-manifest-bad-arm-hash.json" \
+      -StoreLinkMaxAttempts 1 \
+      -StoreLinkRetryDelaySeconds 0 \
+      -DownloadMaxAttempts 1 \
+      -DownloadRetryDelaySeconds 0
+) 2>/dev/null; then
+  echo "Expected malformed optional ARM64 catalog hash to fail closed." >&2
+  exit 1
+fi
+
+jq '.sources.windows.architectures.arm64.catalog.hash = "   "' \
+  "$tmp_dir/probe-manifest-bad-arm-hash.json" > "$tmp_dir/probe-manifest-space-hash.json"
+if (
+  cd "$repo_root"
+  PATH="$tmp_dir/bin:$PATH" \
+  TEST_MODE="corrupt-once" \
+  TEST_STORE_LINK_COUNTER="$counter_path" \
+  TEST_OLD_PACKAGE="$old_package" \
+  TEST_EXPECTED_PACKAGE="$expected_package" \
+  TEST_CHANGED_ARM64_PACKAGE="$changed_arm64_package" \
+  TEST_HTTP_PORT="$port" \
+    pwsh -NoLogo -NoProfile -File scripts/download-windows.ps1 \
+      -OutDir "$tmp_dir/out-space-hash" \
+      -ManifestPath "$tmp_dir/probe-manifest-space-hash.json" \
+      -StoreLinkMaxAttempts 1 \
+      -StoreLinkRetryDelaySeconds 0 \
+      -DownloadMaxAttempts 1 \
+      -DownloadRetryDelaySeconds 0
+) 2>/dev/null; then
+  echo "Expected whitespace catalog SHA-256 hash to fail closed." >&2
+  exit 1
+fi
+
 echo "download-windows retry fixture PASS"

@@ -43,10 +43,19 @@ function Resolve-ExpectedCatalogSha256 {
     return ""
   }
 
-  $algorithm = [string] ($Catalog.hashAlgorithm ?? "")
+  $algorithm = ([string] ($Catalog.hashAlgorithm ?? "")).Trim()
   $rawHash = ([string] ($Catalog.hash ?? "")).Trim()
-  if (-not $rawHash -or -not $algorithm.Equals("SHA256", [StringComparison]::OrdinalIgnoreCase)) {
+  if (-not $algorithm) {
+    if ($rawHash) {
+      throw "Catalog hash provided without hashAlgorithm for $ExpectedPackageMoniker."
+    }
     return ""
+  }
+  if (-not $algorithm.Equals("SHA256", [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Unsupported catalog hashAlgorithm '$algorithm' for $ExpectedPackageMoniker."
+  }
+  if (-not $rawHash) {
+    throw "Empty or whitespace catalog SHA-256 hash for $ExpectedPackageMoniker."
   }
 
   if ($rawHash -match '^[0-9a-fA-F]{64}$') {
@@ -89,12 +98,14 @@ if ($ManifestPath) {
         if (-not $entry.packageMoniker.StartsWith("$PackageIdentity`_", [StringComparison]::OrdinalIgnoreCase)) {
           throw "Probe manifest Windows $($property.Name) package does not match identity $PackageIdentity`: $($entry.packageMoniker)."
         }
+        $isRequired = ($property.Name -eq "x64" -or $RequireArm64.IsPresent)
+        $expectedSha256 = Resolve-ExpectedCatalogSha256 -Catalog $entry.catalog -ExpectedPackageMoniker $entry.packageMoniker
         $windowsPackages += [pscustomobject]@{
           Architecture = $property.Name
           ExpectedPackageMoniker = $entry.packageMoniker
           ExpectedContentLength = [int64] ($entry.contentLength ?? 0)
-          ExpectedSha256 = Resolve-ExpectedCatalogSha256 -Catalog $entry.catalog -ExpectedPackageMoniker $entry.packageMoniker
-          Required = ($property.Name -eq "x64" -or $RequireArm64.IsPresent)
+          ExpectedSha256 = $expectedSha256
+          Required = $isRequired
         }
       }
     }
