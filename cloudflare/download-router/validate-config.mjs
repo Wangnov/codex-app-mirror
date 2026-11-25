@@ -14,6 +14,9 @@ const redirectRule = JSON.parse(
 const wafRule = JSON.parse(
   readFileSync(new URL("../zone-rules/agentsmirror-waf-block.json", import.meta.url), "utf8"),
 );
+const cacheBypassRule = JSON.parse(
+  readFileSync(new URL("../zone-rules/codexapp-r2-cache-bypass.json", import.meta.url), "utf8"),
+);
 
 const vars = wrangler.vars || {};
 const routeConfig = vars.ROUTE_CONFIG;
@@ -99,6 +102,37 @@ for (const wafUa of ["kakou/", "auto-gateway-codex", "codexdownloadproxy", "herm
     `WAF-blocked UA '${wafUa}' must also exist in Worker BLOCKED_UA_SUBSTRINGS as defense-in-depth`,
   );
 }
+
+// Validate Cache Bypass Rule on codexapp-r2 prevents Cloudflare Free-plan (>512MiB) cache fill from stripping HTTP Range on .zip archives and installer aliases, without matching metadata/stats/delta paths.
+assert.equal(cacheBypassRule.ref, "codexapp_r2_large_binary_cache_bypass");
+assert.equal(cacheBypassRule.action, "set_cache_settings");
+assert.equal(cacheBypassRule.action_parameters?.cache, false);
+assert.ok(cacheBypassRule.expression.length < 4096, `cache bypass rule expression exceeds 4096 bytes: ${cacheBypassRule.expression.length}`);
+assert.ok(
+  cacheBypassRule.expression.includes('http.host eq "codexapp-r2.agentsmirror.com"'),
+  "cache bypass rule must target codexapp-r2.agentsmirror.com",
+);
+for (const [aliasPath, aliasSpec] of Object.entries(routeConfig.aliases)) {
+  if (aliasSpec.category === "installer") {
+    assert.ok(
+      cacheBypassRule.expression.includes(`"${aliasPath}"`),
+      `cache bypass rule must cover installer alias '${aliasPath}'`,
+    );
+  } else {
+    assert.ok(
+      !cacheBypassRule.expression.includes(`"${aliasPath}"`),
+      `cache bypass rule must not match metadata alias '${aliasPath}'`,
+    );
+  }
+}
+assert.ok(
+  cacheBypassRule.expression.includes('ends_with(http.request.uri.path, ".zip")'),
+  "cache bypass rule must cover full Sparkle .zip archives",
+);
+assert.ok(
+  !cacheBypassRule.expression.includes(".delta"),
+  "cache bypass rule must not match Sparkle .delta paths",
+);
 
 const { default: worker } = await import(
   new URL("../../.mirror-kit/workers/download-router/src/index.js", import.meta.url)

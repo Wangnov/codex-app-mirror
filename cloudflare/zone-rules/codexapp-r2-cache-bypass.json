@@ -1,0 +1,10 @@
+{
+  "ref": "codexapp_r2_large_binary_cache_bypass",
+  "enabled": true,
+  "action": "set_cache_settings",
+  "description": "codexapp-r2: bypass edge cache on >512MB Sparkle .zip archives and installer aliases so Free-plan cache fill never strips HTTP Range",
+  "expression": "http.host eq \"codexapp-r2.agentsmirror.com\" and (http.request.uri.path in {\"/latest/win\" \"/latest/win-x64\" \"/latest/win-arm64\" \"/latest/mac-arm64\" \"/latest/mac-intel\"} or ends_with(http.request.uri.path, \".zip\"))",
+  "action_parameters": {
+    "cache": false
+  }
+}
