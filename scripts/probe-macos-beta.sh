@@ -59,7 +59,7 @@ python3 - \
 import json
 import sys
 import xml.etree.ElementTree as ET
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import unquote, urlsplit, urlunsplit
 
 arm_path, x64_path, expected_version, arm_feed_url, x64_feed_url = sys.argv[1:]
 SPARKLE = "http://www.andymatuschak.org/xml-namespaces/sparkle"
@@ -75,7 +75,11 @@ def safe_https_beta_url(value, extension, label):
         raise SystemExit(f"{label} is not an official HTTPS asset URL: {value!r}")
     if not parts.path.startswith("/codex-app-beta/"):
         raise SystemExit(f"{label} is outside the official Beta path: {value!r}")
-    basename = parts.path.rsplit("/", 1)[-1]
+    raw_basename = parts.path.rsplit("/", 1)[-1]
+    lower_raw = raw_basename.lower()
+    if "%2f" in lower_raw or "%5c" in lower_raw or ".." in raw_basename:
+        raise SystemExit(f"{label} has unsafe encoded basename: {raw_basename!r}")
+    basename = unquote(raw_basename)
     if not basename or not basename.endswith(f".{extension}"):
         raise SystemExit(f"{label} has invalid .{extension} basename: {basename!r}")
     if any(part in basename for part in ("/", "\\", "..")) or any(

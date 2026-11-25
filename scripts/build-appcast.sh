@@ -113,7 +113,8 @@ if [[ -z "$title" ]]; then
   title="$short_version"
 fi
 
-enclosure_url="$base/latest/$mirror_dir/$enclosure_basename"
+encoded_enclosure_basename="$(jq -rn --arg v "$enclosure_basename" '$v | @uri')"
+enclosure_url="$base/latest/$mirror_dir/$encoded_enclosure_basename"
 
 # Delta enclosures the official appcast advertises under <sparkle:deltas>. The
 # probe captured each one verbatim (every attribute, including the official
@@ -139,6 +140,7 @@ python3 - \
   "$deltas_json" <<'PY'
 import json
 import sys
+from urllib.parse import quote, unquote, urlsplit
 from xml.sax.saxutils import escape, quoteattr
 
 (
@@ -163,12 +165,23 @@ deltas = json.loads(deltas_json) if deltas_json else []
 
 
 def delta_enclosure_line(delta):
-    # Resolve the mirror URL from the official basename so URL resolution through
-    # the Worker stays stable. Preserve the basename exactly as published.
-    basename = delta.get("basename") or (delta.get("url", "").rsplit("/", 1)[-1])
-    if not basename:
-        raise SystemExit("delta enclosure missing basename/url")
-    mirror_url = f"{mirror_base}/latest/{mirror_dir}/{basename}"
+    # Resolve the mirror URL from the logical basename so URL resolution through
+    # Global R2 and CN S3 stays identical even if upstream percent-encodes a filename.
+    raw_url = delta.get("url", "")
+    url_seg = urlsplit(raw_url).path.rsplit("/", 1)[-1] if raw_url else ""
+    if "%2f" in url_seg.lower() or "%5c" in url_seg.lower():
+        raise SystemExit(f"unsafe encoded path separator in delta URL: {raw_url!r}")
+    basename = delta.get("basename") or unquote(url_seg)
+    if (
+        not basename
+        or not basename.endswith(".delta")
+        or "/" in basename
+        or "\\" in basename
+        or ".." in basename
+        or any(ord(ch) < 32 or ord(ch) == 127 for ch in basename)
+    ):
+        raise SystemExit(f"invalid delta enclosure basename: {basename!r}")
+    mirror_url = f"{mirror_base}/latest/{mirror_dir}/{quote(basename, safe='-._~')}"
 
     # Start from every attribute the probe captured (verbatim, sparkle: prefixes
     # preserved) so we faithfully reproduce OpenAI's enclosure, then override the

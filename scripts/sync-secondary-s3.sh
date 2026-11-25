@@ -161,6 +161,7 @@ delta_basenames_from_appcast() {
   python3 - "$appcast" <<'PY'
 import sys
 import xml.etree.ElementTree as ET
+from urllib.parse import unquote, urlsplit
 
 SP = "{http://www.andymatuschak.org/xml-namespaces/sparkle}"
 item = ET.parse(sys.argv[1]).getroot().find("./channel/item")
@@ -172,7 +173,7 @@ if deltas is None:
 for enc in deltas.findall("enclosure"):
     url = enc.attrib.get("url", "")
     if url:
-        print(url.rsplit("/", 1)[-1])
+        print(unquote(urlsplit(url).path.rsplit("/", 1)[-1]))
 PY
 }
 

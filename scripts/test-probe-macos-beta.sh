@@ -169,10 +169,6 @@ case "$url" in
     cp "${TEST_FIXTURE_DIR:?}/${TEST_SCENARIO:?}-x64.xml" "${output:?}"
     ;;
   *)
-    [[ -n "$headers" ]] || {
-      echo "unexpected fixture URL without range headers: $url" >&2
-      exit 1
-    }
     case "$url" in
       *-arm64.dmg) size=101 ;;
       *-x64.dmg) size=102 ;;
@@ -183,13 +179,20 @@ case "$url" in
         exit 1
         ;;
     esac
-    cat > "$headers" <<EOF
+    if [[ -n "$headers" ]]; then
+      cat > "$headers" <<EOF
 HTTP/2 206
 content-length: 1
 content-range: bytes 0-0/$size
 last-modified: Thu, 09 Jul 2026 23:59:59 GMT
 etag: fixture-$size
 EOF
+    elif [[ -n "$output" ]]; then
+      head -c "$size" /dev/zero > "$output"
+    else
+      echo "unexpected fixture URL without range headers or output: $url" >&2
+      exit 1
+    fi
     ;;
 esac
 CURL
@@ -223,6 +226,10 @@ jq -e '
   and .sources.macos.x64.appcast.channelTitle == "Codex (Beta)"
   and .sources.macos.arm64.url == "https://persistent.oaistatic.com/codex-app-beta/ChatGPT%20(Beta)-26.707.31428-arm64.dmg"
   and .sources.macos.x64.url == "https://persistent.oaistatic.com/codex-app-beta/ChatGPT%20(Beta)-26.707.31428-x64.dmg"
+  and .sources.macos.arm64.sourceBasename == "ChatGPT (Beta)-26.707.31428-arm64.dmg"
+  and .sources.macos.x64.sourceBasename == "ChatGPT (Beta)-26.707.31428-x64.dmg"
+  and .sources.macos.arm64.appcast.sourceBasename == "ChatGPT (Beta)-darwin-arm64-26.707.31428.zip"
+  and .sources.macos.x64.appcast.sourceBasename == "ChatGPT (Beta)-darwin-x64-26.707.31428.zip"
   and .sources.macos.arm64.contentLength == 101
   and .sources.macos.x64.contentLength == 102
   and .sources.macos.arm64.appcast.enclosureLength == 201
@@ -230,6 +237,11 @@ jq -e '
   and .sources.macos.arm64.appcast.deltas == []
   and .sources.macos.x64.appcast.deltas == []
 ' "$success_manifest" >/dev/null
+
+# Verify producer -> consumer compatibility with download-macos.sh.
+env PATH="$tmp_dir/bin:$PATH" bash "$repo_root/scripts/download-macos.sh" "$tmp_dir/downloaded" "$success_manifest"
+test -f "$tmp_dir/downloaded/ChatGPT-Beta-mac-arm64.dmg"
+test -f "$tmp_dir/downloaded/ChatGPT-Beta-darwin-arm64-26.707.31428.zip"
 
 assert_probe_failure() {
   local scenario="$1"

@@ -66,7 +66,7 @@ for arch in ("arm64", "x64"):
     macos_checksum_lines.extend((f"{dmg_sha}  {dmg_name}", f"{zip_sha}  {zip_name}"))
     macos[arch] = {
         "url": f"https://persistent.oaistatic.com/codex-app-beta/ChatGPT%20(Beta)-{macos_version}-{arch}.dmg",
-        "sourceBasename": f"ChatGPT%20(Beta)-{macos_version}-{arch}.dmg",
+        "sourceBasename": f"ChatGPT (Beta)-{macos_version}-{arch}.dmg",
         "mirrorBasename": dmg_name,
         "contentLength": dmg_path.stat().st_size,
         "appcastUrl": f"https://persistent.oaistatic.com/codex-app-beta/appcast{'-x64' if arch == 'x64' else ''}.xml",
@@ -75,7 +75,7 @@ for arch in ("arm64", "x64"):
             "version": macos_build,
             "shortVersionString": macos_version,
             "enclosureUrl": f"https://persistent.oaistatic.com/codex-app-beta/ChatGPT%20(Beta)-darwin-{arch}-{macos_version}.zip",
-            "sourceBasename": f"ChatGPT%20(Beta)-darwin-{arch}-{macos_version}.zip",
+            "sourceBasename": f"ChatGPT (Beta)-darwin-{arch}-{macos_version}.zip",
             "mirrorEnclosureBasename": zip_name,
             "enclosureLength": zip_path.stat().st_size,
             "enclosureSignature": "fixture-signature",

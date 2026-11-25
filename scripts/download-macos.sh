@@ -84,11 +84,11 @@ require_url_basename() {
 
   python3 - "$label" "$url" "$expected" <<'PY'
 import sys
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 label, url, expected = sys.argv[1:]
 parts = urlsplit(url)
-actual = parts.path.rsplit("/", 1)[-1]
+actual = unquote(parts.path.rsplit("/", 1)[-1])
 if parts.scheme != "https" or not parts.netloc:
     raise SystemExit(f"{label} URL is not an absolute HTTPS URL: {url!r}")
 if actual != expected:
@@ -219,9 +219,9 @@ download_deltas() {
       exit 1
     fi
     if [[ -z "$basename" || "$basename" == "null" ]]; then
-      # Preserve the official filename: fall back to the URL basename if the
+      # Preserve the official filename: fall back to the URL-decoded basename if the
       # probe did not record one explicitly.
-      basename="${url##*/}"
+      basename="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.unquote(urllib.parse.urlsplit(sys.argv[1]).path.rsplit("/", 1)[-1]))' "$url")"
     fi
     validate_safe_basename "macOS $arch_key delta[$i]" "$basename" delta || exit 1
     require_url_basename "macOS $arch_key delta[$i]" "$url" "$basename"

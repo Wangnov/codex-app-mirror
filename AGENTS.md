@@ -97,7 +97,7 @@ repo only keeps the per-instance deploy config (`wrangler.jsonc`) under
 `cloudflare/download-router/` and `cloudflare/github-dispatcher/`.
 `cloudflare/secondary-sync/` is the one Worker whose source *is* local.
 
-CI checks out the kit at a **pinned tag** (currently `v0.3.3`, see
+CI checks out the kit at a **pinned tag** (currently `v0.3.4`, see
 `Checkout agents-mirror-kit` step in `ci.yml`, `mirror.yml`, `stats.yml`) to
 `.mirror-kit/` and runs `cloudflare/download-router/validate-config.mjs`
 against it, and the kit's own worker code for the dispatcher. Any deployed

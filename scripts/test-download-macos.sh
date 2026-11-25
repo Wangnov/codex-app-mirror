@@ -51,6 +51,7 @@ fi
 
 basename="${url%%\?*}"
 basename="${basename##*/}"
+basename="${basename//%20/ }"
 source="${TEST_SOURCE_DIR:?TEST_SOURCE_DIR must be set}/$basename"
 if [[ ! -f "$source" ]]; then
   echo "unexpected fixture URL: $url" >&2
@@ -169,5 +170,28 @@ if [[ "$mismatch_status" -eq 0 ]] ||
   printf '%s\n' "$mismatch_output" >&2
   exit 1
 fi
+
+printf 'space-zip' > "$tmp_dir/source/ChatGPT Desktop-darwin-arm64-1.2.3.zip"
+printf 'space-delta' > "$tmp_dir/source/ChatGPT Desktop-1.2.3-arm64.delta"
+space_zip_size="$(file_size "$tmp_dir/source/ChatGPT Desktop-darwin-arm64-1.2.3.zip")"
+space_delta_size="$(file_size "$tmp_dir/source/ChatGPT Desktop-1.2.3-arm64.delta")"
+jq \
+  --argjson sz "$space_zip_size" \
+  --argjson dsz "$space_delta_size" \
+  '
+  .sources.macos.arm64.appcast.enclosureUrl = "https://persistent.oaistatic.com/codex-app-prod/ChatGPT%20Desktop-darwin-arm64-1.2.3.zip"
+  | .sources.macos.arm64.appcast.sourceBasename = "ChatGPT Desktop-darwin-arm64-1.2.3.zip"
+  | .sources.macos.arm64.appcast.enclosureLength = $sz
+  | .sources.macos.arm64.appcast.deltas = [{
+      "url": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT%20Desktop-1.2.3-arm64.delta",
+      "length": $dsz
+    }]
+  ' "$tmp_dir/manifest.json" > "$tmp_dir/space-manifest.json"
+space_output_dir="$tmp_dir/space-output"
+PATH="$tmp_dir/bin:$PATH" TEST_SOURCE_DIR="$tmp_dir/source" \
+  bash "$repo_root/scripts/download-macos.sh" "$space_output_dir" "$tmp_dir/space-manifest.json"
+test -f "$space_output_dir/Codex-darwin-arm64-1.2.3.zip"
+test -f "$space_output_dir/ChatGPT Desktop-1.2.3-arm64.delta"
+grep -F 'ChatGPT Desktop-1.2.3-arm64.delta' "$space_output_dir/SHA256SUMS-macos.txt"
 
 echo "download-macos double-basename fixture PASS"
