@@ -28,7 +28,6 @@
     }
   ],
   "vars": {
-    "PUBLIC_BASE_URL": "https://codexapp.agentsmirror.com",
     "SECONDARY_S3_REGION": "auto",
     "SECONDARY_SYNC_PART_SIZE_BYTES": "33554432",
     "SECONDARY_SYNC_SINGLE_PUT_MAX_BYTES": "33554432",
