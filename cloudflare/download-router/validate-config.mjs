@@ -106,6 +106,12 @@ for (const wafUa of ["kakou/", "auto-gateway-codex", "codexdownloadproxy", "herm
     `WAF-blocked UA '${wafUa}' must also exist in Worker BLOCKED_UA_SUBSTRINGS as defense-in-depth`,
   );
 }
+for (const edgeOnlyToken of ["yumebox", "awariobot", "15.235.198.243", "2402:1f00:8000:800::2245"]) {
+  assert.ok(
+    wafRule.expression.includes(edgeOnlyToken),
+    `WAF rule must include edge-blocked scraper/proxy token '${edgeOnlyToken}'`,
+  );
+}
 
 // Validate Cache Bypass Rule on codexapp-r2 prevents Cloudflare Free-plan (>512MiB) cache fill from stripping HTTP Range on .zip archives and installer aliases, without matching metadata/stats/delta paths.
 assert.equal(cacheBypassRule.enabled, true, "cache bypass rule must be enabled");
